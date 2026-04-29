@@ -1,5 +1,5 @@
 # network-monitor2
-# [200~バックエンド: Python + FastAPI
+# Python + FastAPI
 
 非同期ポーリングループ（APScheduler）
 Ping監視: icmplib または subprocess
