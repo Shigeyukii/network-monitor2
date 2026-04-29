@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <h1 id="nav-home">🖧 <span>Network</span> Monitor</h1>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btn-add-device">＋ デバイス追加</button>
+    <button class="btn" id="btn-settings">⚙ 設定</button>
+  </header>
+
+  <main>
+
+    <!-- ============================================================
+         Dashboard view
+         ============================================================ -->
+    <div id="view-dashboard" class="view">
+      <div class="summary-strip">
+        <div class="summary-card">
+          <div class="value" id="sum-total">—</div>
+          <div class="label">合計</div>
+        </div>
+        <div class="summary-card up">
+          <div class="value" id="sum-up">—</div>
+          <div class="label">稼働中 (UP)</div>
+        </div>
+        <div class="summary-card down">
+          <div class="value" id="sum-down">—</div>
+          <div class="label">障害 (DOWN)</div>
+        </div>
+        <div class="summary-card unk">
+          <div class="value" id="sum-unknown">—</div>
+          <div class="label">不明</div>
+        </div>
+      </div>
+
+      <div id="device-grid" class="device-grid"></div>
+    </div>
+
+    <!-- ============================================================
+         Detail view
+         ============================================================ -->
+    <div id="view-detail" class="view">
+      <div class="detail-header">
+        <button class="btn btn-sm" id="btn-detail-back">← 一覧へ</button>
+        <div>
+          <h2 id="detail-title">—</h2>
+          <span style="font-size:13px;color:var(--muted)" id="detail-ip"></span>
+        </div>
+        <span class="status-badge unknown" id="detail-status">不明</span>
+        <div class="detail-actions">
+          <button class="btn btn-sm" id="btn-edit-device">編集</button>
+          <button class="btn btn-sm btn-danger" id="btn-delete-device">削除</button>
+        </div>
+      </div>
+
+      <div class="hours-selector">
+        <button class="hours-btn active" data-hours="1">1時間</button>
+        <button class="hours-btn" data-hours="6">6時間</button>
+        <button class="hours-btn" data-hours="24">24時間</button>
+        <button class="hours-btn" data-hours="72">3日</button>
+        <button class="hours-btn" data-hours="168">7日</button>
+      </div>
+
+      <div class="detail-grid">
+
+        <!-- デバイス情報 -->
+        <div class="panel">
+          <h3>デバイス情報</h3>
+          <table class="info-table">
+            <tr><td>IPアドレス</td>  <td id="info-ip">—</td></tr>
+            <tr><td>応答時間</td>    <td id="info-rtt">—</td></tr>
+            <tr><td>最終確認</td>    <td id="info-lastcheck">—</td></tr>
+            <tr><td>監視間隔</td>    <td id="info-interval">—</td></tr>
+            <tr><td>SNMP</td>        <td id="info-snmp">—</td></tr>
+          </table>
+          <div style="margin-top:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:12px;color:var(--muted)">稼働率バー（表示期間）</span>
+              <span style="font-size:12px;color:var(--muted)" id="uptime-pct"></span>
+            </div>
+            <div class="uptime-bar" id="uptime-bar"></div>
+          </div>
+        </div>
+
+        <!-- Ping 応答時間グラフ -->
+        <div class="panel">
+          <h3>Ping 応答時間</h3>
+          <div class="chart-wrap">
+            <canvas id="ping-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- トラフィックグラフ（SNMP有効時のみ） -->
+        <div class="panel wide" id="traffic-section" style="display:none">
+          <h3>トラフィック (SNMP)</h3>
+          <div class="iface-selector">
+            <label>インターフェース:</label>
+            <select id="iface-select"></select>
+          </div>
+          <div class="chart-wrap" style="height:260px">
+            <canvas id="traffic-chart"></canvas>
+          </div>
+          <div id="no-traffic-msg" style="display:none;color:var(--muted);font-size:13px;margin-top:8px">
+            トラフィックデータがまだありません（次回のSNMPポーリング後に表示されます）
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ============================================================
+         Settings view
+         ============================================================ -->
+    <div id="view-settings" class="view">
+      <div class="settings-form">
+        <h2>⚙ 設定</h2>
+        <form id="settings-form">
+
+          <div class="panel" style="margin-bottom:20px">
+            <h3>監視間隔</h3>
+            <div class="form-group">
+              <label>Ping 間隔（秒）</label>
+              <input type="number" id="setting-ping-interval" min="10" max="3600" value="60">
+              <div class="hint">デフォルト: 60秒。全デバイス共通です。</div>
+            </div>
+            <div class="form-group">
+              <label>SNMP 間隔（秒）</label>
+              <input type="number" id="setting-snmp-interval" min="10" max="3600" value="60">
+              <div class="hint">デフォルト: 60秒。SNMP有効デバイスのみ対象です。</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button type="submit" class="btn btn-primary">保存して適用</button>
+            <button type="button" class="btn" id="btn-settings-back">← 一覧へ戻る</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     Add / Edit device modal
+     ============================================================ -->
+<div id="device-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2 id="modal-title">デバイスを追加</h2>
+    <form id="device-form">
+      <input type="hidden" id="device-id">
+
+      <div class="form-group">
+        <label>デバイス名 <span style="color:var(--red)">*</span></label>
+        <input type="text" id="field-name" placeholder="例: Core-Switch-01" required>
+      </div>
+
+      <div class="form-group">
+        <label>IPアドレス <span style="color:var(--red)">*</span></label>
+        <input type="text" id="field-ip" placeholder="例: 192.168.1.1" required
+               pattern="^[\d.]+$|^[\da-fA-F:]+$">
+      </div>
+
+      <div class="form-group">
+        <label>Ping 間隔（秒）</label>
+        <input type="number" id="field-ping-interval" value="60" min="10" max="3600">
+        <div class="hint">デバイス個別に設定できます（グローバル設定を上書き）</div>
+      </div>
+
+      <div class="form-group">
+        <div class="toggle-group">
+          <label class="toggle">
+            <input type="checkbox" id="field-snmp-enabled">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>SNMP を有効にする</span>
+        </div>
+      </div>
+
+      <div id="snmp-fields" class="snmp-fields">
+        <div class="form-row">
+          <div class="form-group">
+            <label>コミュニティ文字列</label>
+            <input type="text" id="field-community" value="public">
+          </div>
+          <div class="form-group">
+            <label>ポート</label>
+            <input type="number" id="field-port" value="161" min="1" max="65535">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>SNMPバージョン</label>
+          <select id="field-version">
+            <option value="v2c">v2c（推奨）</option>
+            <option value="v1">v1</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn" id="modal-cancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary" id="modal-submit">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

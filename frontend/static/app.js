@@ -1,0 +1,557 @@
+// ============================================================
+// API helpers
+// ============================================================
+const api = {
+  async get(path) {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async post(path, body) {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async put(path, body) {
+    const r = await fetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async del(path) {
+    const r = await fetch(path, { method: "DELETE" });
+    if (!r.ok && r.status !== 204) throw new Error(await r.text());
+  },
+};
+
+// ============================================================
+// Toast
+// ============================================================
+function toast(msg, type = "success") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById("toast-container").appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+function fmtBps(bps) {
+  if (bps === null || bps === undefined) return "—";
+  if (bps >= 1e9) return (bps / 1e9).toFixed(2) + " Gbps";
+  if (bps >= 1e6) return (bps / 1e6).toFixed(2) + " Mbps";
+  if (bps >= 1e3) return (bps / 1e3).toFixed(1) + " Kbps";
+  return bps.toFixed(0) + " bps";
+}
+
+function fmtRtt(ms) {
+  if (ms === null || ms === undefined) return "—";
+  return ms.toFixed(1) + " ms";
+}
+
+function fmtTime(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts.replace(" ", "T"));
+  return d.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function statusLabel(ping) {
+  if (!ping) return "unknown";
+  return ping.status ? "up" : "down";
+}
+
+function statusText(ping) {
+  if (!ping) return "不明";
+  return ping.status ? "UP" : "DOWN";
+}
+
+// ============================================================
+// App state
+// ============================================================
+const state = {
+  view: "dashboard",      // "dashboard" | "detail" | "settings"
+  devices: [],
+  summary: {},
+  detail: { device: null, hours: 24, ifIndex: null },
+  charts: {},
+  refreshTimer: null,
+  detailTimer: null,
+};
+
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById(`view-${name}`).classList.add("active");
+  state.view = name;
+}
+
+// ============================================================
+// Dashboard
+// ============================================================
+async function loadDashboard() {
+  try {
+    const [devices, summary] = await Promise.all([
+      api.get("/api/devices"),
+      api.get("/api/metrics/summary"),
+    ]);
+    state.devices = devices;
+    state.summary = summary;
+    renderSummary(summary);
+    renderDeviceGrid(devices);
+  } catch (e) {
+    toast("デバイス一覧の取得に失敗しました: " + e.message, "error");
+  }
+}
+
+function renderSummary(s) {
+  document.getElementById("sum-total").textContent   = s.total;
+  document.getElementById("sum-up").textContent      = s.up;
+  document.getElementById("sum-down").textContent    = s.down;
+  document.getElementById("sum-unknown").textContent = s.unknown;
+}
+
+function renderDeviceGrid(devices) {
+  const grid = document.getElementById("device-grid");
+  if (devices.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="icon">📡</div>
+      <p>監視デバイスがまだ登録されていません</p>
+      <button class="btn btn-primary" onclick="openAddDevice()">＋ デバイスを追加</button>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = devices.map(d => {
+    const st = statusLabel(d.latest_ping);
+    const rtt = d.latest_ping ? fmtRtt(d.latest_ping.response_time) : "—";
+    const ts  = d.latest_ping ? fmtTime(d.latest_ping.timestamp) : "未確認";
+    return `<div class="device-card status-${st}" onclick="openDetail(${d.id})">
+      <div class="card-top">
+        <div>
+          <div class="device-name">${esc(d.name)}</div>
+          <div class="device-ip">${esc(d.ip_address)}</div>
+        </div>
+        <span class="status-badge ${st}">${statusText(d.latest_ping)}</span>
+      </div>
+      <div class="device-meta">
+        <span class="rtt">RTT: ${rtt}</span>
+        ${d.snmp_enabled ? `<span>📊 SNMP</span>` : ""}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${ts}</div>
+    </div>`;
+  }).join("");
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ============================================================
+// Detail view
+// ============================================================
+async function openDetail(deviceId) {
+  clearInterval(state.detailTimer);
+  destroyCharts();
+  state.detail.device = state.devices.find(d => d.id === deviceId) || { id: deviceId };
+  state.detail.hours = 24;
+  state.detail.ifIndex = null;
+  showView("detail");
+  await refreshDetail();
+  state.detailTimer = setInterval(refreshDetail, 60_000);
+}
+
+async function refreshDetail() {
+  const id = state.detail.device.id;
+  try {
+    const [device, pingData] = await Promise.all([
+      api.get(`/api/devices/${id}`),
+      api.get(`/api/metrics/ping/${id}?hours=${state.detail.hours}`),
+    ]);
+    state.detail.device = device;
+    renderDetailHeader(device);
+    renderDeviceInfo(device);
+    renderPingChart(pingData);
+    renderUptimeBar(pingData);
+
+    if (device.snmp_enabled) {
+      document.getElementById("traffic-section").style.display = "";
+      const ifIdx = state.detail.ifIndex ? `&if_index=${state.detail.ifIndex}` : "";
+      const trafficData = await api.get(`/api/metrics/traffic/${id}?hours=${state.detail.hours}${ifIdx}`);
+      renderIfaceSelector(trafficData, device.id);
+      renderTrafficChart(trafficData);
+    } else {
+      document.getElementById("traffic-section").style.display = "none";
+    }
+  } catch (e) {
+    toast("詳細データ取得失敗: " + e.message, "error");
+  }
+}
+
+function renderDetailHeader(d) {
+  const st = statusLabel(d.latest_ping);
+  document.getElementById("detail-title").textContent = d.name;
+  document.getElementById("detail-ip").textContent    = d.ip_address;
+  const badge = document.getElementById("detail-status");
+  badge.className = `status-badge ${st}`;
+  badge.textContent = statusText(d.latest_ping);
+  document.getElementById("btn-edit-device").onclick   = () => openEditDevice(d.id);
+  document.getElementById("btn-delete-device").onclick = () => confirmDelete(d.id, d.name);
+}
+
+function renderDeviceInfo(d) {
+  const rtt = d.latest_ping ? fmtRtt(d.latest_ping.response_time) : "—";
+  const ts  = d.latest_ping ? fmtTime(d.latest_ping.timestamp) : "未確認";
+  document.getElementById("info-ip").textContent        = d.ip_address;
+  document.getElementById("info-rtt").textContent       = rtt;
+  document.getElementById("info-lastcheck").textContent = ts;
+  document.getElementById("info-interval").textContent  = d.ping_interval + " 秒";
+  document.getElementById("info-snmp").textContent      = d.snmp_enabled
+    ? `有効 (${d.snmp_community} / ${d.snmp_version})`
+    : "無効";
+}
+
+function renderUptimeBar(pingData) {
+  const bar = document.getElementById("uptime-bar");
+  if (pingData.length === 0) { bar.innerHTML = ""; return; }
+  const BUCKETS = 48;
+  const total = pingData.length;
+  const size  = Math.max(1, Math.ceil(total / BUCKETS));
+  const segs  = [];
+  for (let i = 0; i < total; i += size) {
+    const slice = pingData.slice(i, i + size);
+    const up = slice.filter(p => p.status).length;
+    segs.push(up / slice.length >= 0.5 ? "up" : "down");
+  }
+  const upCount = pingData.filter(p => p.status).length;
+  const pct = total > 0 ? ((upCount / total) * 100).toFixed(1) : "—";
+  document.getElementById("uptime-pct").textContent = `稼働率: ${pct}%`;
+  bar.innerHTML = segs.map(s => `<div class="uptime-seg ${s}" title="${s}"></div>`).join("");
+}
+
+// ---- Ping chart ----
+function renderPingChart(data) {
+  destroyChart("ping");
+  const ctx = document.getElementById("ping-chart").getContext("2d");
+  const labels  = data.map(p => new Date(p.timestamp.replace(" ", "T")));
+  const values  = data.map(p => p.status ? p.response_time : null);
+  const colors  = data.map(p => p.status ? "rgba(63,185,80,0.9)" : "rgba(248,81,73,0.9)");
+
+  state.charts.ping = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "応答時間 (ms)",
+        data: values,
+        borderColor: "rgba(88,166,255,0.8)",
+        backgroundColor: "rgba(88,166,255,0.1)",
+        pointBackgroundColor: colors,
+        pointRadius: data.length > 200 ? 2 : 4,
+        pointBorderWidth: 0,
+        tension: 0.3,
+        fill: true,
+        spanGaps: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          type: "time",
+          time: { tooltipFormat: "MM/dd HH:mm:ss", displayFormats: { hour: "HH:mm", minute: "HH:mm" } },
+          ticks: { color: "#8b949e", maxTicksLimit: 8 },
+          grid: { color: "rgba(48,54,61,0.6)" },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: "#8b949e" },
+          grid: { color: "rgba(48,54,61,0.6)" },
+          title: { display: true, text: "ms", color: "#8b949e" },
+        },
+      },
+    },
+  });
+}
+
+// ---- Traffic chart ----
+function renderIfaceSelector(trafficData, deviceId) {
+  const sel = document.getElementById("iface-select");
+  const current = state.detail.ifIndex;
+  sel.innerHTML = '<option value="">全インターフェース</option>' +
+    trafficData.map(i => `<option value="${i.if_index}" ${i.if_index == current ? "selected" : ""}>${esc(i.if_name || "if" + i.if_index)}</option>`).join("");
+  sel.onchange = () => {
+    state.detail.ifIndex = sel.value ? parseInt(sel.value) : null;
+    refreshDetail();
+  };
+}
+
+function renderTrafficChart(trafficData) {
+  destroyChart("traffic");
+  if (!trafficData || trafficData.length === 0) return;
+
+  // Use first interface if none selected, or the selected one
+  const iface = state.detail.ifIndex
+    ? trafficData.find(i => i.if_index === state.detail.ifIndex)
+    : trafficData[0];
+  if (!iface || iface.data.length === 0) {
+    document.getElementById("no-traffic-msg").style.display = "";
+    return;
+  }
+  document.getElementById("no-traffic-msg").style.display = "none";
+
+  const ctx = document.getElementById("traffic-chart").getContext("2d");
+  const labels  = iface.data.map(r => new Date(r.timestamp.replace(" ", "T")));
+  const inData  = iface.data.map(r => r.in_bps);
+  const outData = iface.data.map(r => r.out_bps);
+
+  state.charts.traffic = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "受信 (In)",
+          data: inData,
+          borderColor: "rgba(88,166,255,0.9)",
+          backgroundColor: "rgba(88,166,255,0.15)",
+          pointRadius: inData.length > 200 ? 1 : 3,
+          pointBorderWidth: 0,
+          tension: 0.3,
+          fill: true,
+        },
+        {
+          label: "送信 (Out)",
+          data: outData,
+          borderColor: "rgba(63,185,80,0.9)",
+          backgroundColor: "rgba(63,185,80,0.15)",
+          pointRadius: outData.length > 200 ? 1 : 3,
+          pointBorderWidth: 0,
+          tension: 0.3,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: "#8b949e" } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmtBps(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: "time",
+          time: { tooltipFormat: "MM/dd HH:mm:ss", displayFormats: { hour: "HH:mm", minute: "HH:mm" } },
+          ticks: { color: "#8b949e", maxTicksLimit: 8 },
+          grid: { color: "rgba(48,54,61,0.6)" },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: "#8b949e",
+            callback: v => fmtBps(v),
+          },
+          grid: { color: "rgba(48,54,61,0.6)" },
+        },
+      },
+    },
+  });
+}
+
+function destroyChart(name) {
+  if (state.charts[name]) {
+    state.charts[name].destroy();
+    delete state.charts[name];
+  }
+}
+function destroyCharts() {
+  Object.keys(state.charts).forEach(destroyChart);
+}
+
+// ============================================================
+// Add / Edit device modal
+// ============================================================
+function openAddDevice() {
+  const modal = document.getElementById("device-modal");
+  document.getElementById("modal-title").textContent  = "デバイスを追加";
+  document.getElementById("modal-submit").textContent = "追加";
+  document.getElementById("device-form").reset();
+  document.getElementById("device-id").value = "";
+  toggleSnmpFields();
+  modal.style.display = "flex";
+}
+
+async function openEditDevice(id) {
+  try {
+    const d = await api.get(`/api/devices/${id}`);
+    const modal = document.getElementById("device-modal");
+    document.getElementById("modal-title").textContent  = "デバイスを編集";
+    document.getElementById("modal-submit").textContent = "保存";
+    document.getElementById("device-id").value            = d.id;
+    document.getElementById("field-name").value           = d.name;
+    document.getElementById("field-ip").value             = d.ip_address;
+    document.getElementById("field-ping-interval").value  = d.ping_interval;
+    document.getElementById("field-snmp-enabled").checked = !!d.snmp_enabled;
+    document.getElementById("field-community").value      = d.snmp_community;
+    document.getElementById("field-port").value           = d.snmp_port;
+    document.getElementById("field-version").value        = d.snmp_version;
+    toggleSnmpFields();
+    modal.style.display = "flex";
+  } catch (e) {
+    toast("デバイス情報取得失敗: " + e.message, "error");
+  }
+}
+
+function toggleSnmpFields() {
+  const enabled = document.getElementById("field-snmp-enabled").checked;
+  document.getElementById("snmp-fields").classList.toggle("visible", enabled);
+}
+
+function closeDeviceModal() {
+  document.getElementById("device-modal").style.display = "none";
+}
+
+async function submitDeviceForm(e) {
+  e.preventDefault();
+  const id = document.getElementById("device-id").value;
+  const body = {
+    name:           document.getElementById("field-name").value.trim(),
+    ip_address:     document.getElementById("field-ip").value.trim(),
+    ping_interval:  parseInt(document.getElementById("field-ping-interval").value) || 60,
+    snmp_enabled:   document.getElementById("field-snmp-enabled").checked,
+    snmp_community: document.getElementById("field-community").value.trim() || "public",
+    snmp_port:      parseInt(document.getElementById("field-port").value) || 161,
+    snmp_version:   document.getElementById("field-version").value,
+  };
+  try {
+    if (id) {
+      await api.put(`/api/devices/${id}`, body);
+      toast("デバイスを更新しました");
+    } else {
+      await api.post("/api/devices", body);
+      toast("デバイスを追加しました");
+    }
+    closeDeviceModal();
+    await loadDashboard();
+    if (id && state.view === "detail" && state.detail.device?.id === parseInt(id)) {
+      await refreshDetail();
+    }
+  } catch (e) {
+    toast("保存失敗: " + e.message, "error");
+  }
+}
+
+async function confirmDelete(id, name) {
+  if (!confirm(`「${name}」を削除しますか？\n関連する全データも削除されます。`)) return;
+  try {
+    await api.del(`/api/devices/${id}`);
+    toast(`「${name}」を削除しました`);
+    clearInterval(state.detailTimer);
+    showView("dashboard");
+    await loadDashboard();
+  } catch (e) {
+    toast("削除失敗: " + e.message, "error");
+  }
+}
+
+// ============================================================
+// Settings view
+// ============================================================
+async function openSettings() {
+  showView("settings");
+  try {
+    const s = await api.get("/api/settings");
+    document.getElementById("setting-ping-interval").value = s.ping_interval ?? 60;
+    document.getElementById("setting-snmp-interval").value = s.snmp_interval ?? 60;
+  } catch (e) {
+    toast("設定取得失敗: " + e.message, "error");
+  }
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  const body = {
+    ping_interval: parseInt(document.getElementById("setting-ping-interval").value),
+    snmp_interval: parseInt(document.getElementById("setting-snmp-interval").value),
+  };
+  try {
+    await api.put("/api/settings", body);
+    await api.post("/api/settings/reschedule", {});
+    toast("設定を保存し、スケジュールを更新しました");
+  } catch (e) {
+    toast("設定保存失敗: " + e.message, "error");
+  }
+}
+
+// ============================================================
+// Hours selector in detail
+// ============================================================
+function setDetailHours(hours) {
+  state.detail.hours = hours;
+  document.querySelectorAll(".hours-btn").forEach(b => {
+    b.classList.toggle("active", parseInt(b.dataset.hours) === hours);
+  });
+  refreshDetail();
+}
+
+// ============================================================
+// Auto-refresh
+// ============================================================
+function startDashboardRefresh() {
+  clearInterval(state.refreshTimer);
+  state.refreshTimer = setInterval(() => {
+    if (state.view === "dashboard") loadDashboard();
+  }, 30_000);
+}
+
+// ============================================================
+// Init
+// ============================================================
+document.addEventListener("DOMContentLoaded", () => {
+  // Nav
+  document.getElementById("nav-home").addEventListener("click", () => {
+    clearInterval(state.detailTimer);
+    showView("dashboard");
+    loadDashboard();
+  });
+  document.getElementById("btn-add-device").addEventListener("click", openAddDevice);
+  document.getElementById("btn-settings").addEventListener("click", openSettings);
+
+  // Device form
+  document.getElementById("device-form").addEventListener("submit", submitDeviceForm);
+  document.getElementById("field-snmp-enabled").addEventListener("change", toggleSnmpFields);
+  document.getElementById("modal-cancel").addEventListener("click", closeDeviceModal);
+  document.getElementById("device-modal").addEventListener("click", e => {
+    if (e.target === e.currentTarget) closeDeviceModal();
+  });
+
+  // Settings form
+  document.getElementById("settings-form").addEventListener("submit", saveSettings);
+  document.getElementById("btn-settings-back").addEventListener("click", () => {
+    showView("dashboard");
+    loadDashboard();
+  });
+
+  // Detail back
+  document.getElementById("btn-detail-back").addEventListener("click", () => {
+    clearInterval(state.detailTimer);
+    destroyCharts();
+    showView("dashboard");
+    loadDashboard();
+  });
+
+  // Hours buttons
+  document.querySelectorAll(".hours-btn").forEach(b => {
+    b.addEventListener("click", () => setDetailHours(parseInt(b.dataset.hours)));
+  });
+
+  // Initial load
+  showView("dashboard");
+  loadDashboard();
+  startDashboardRefresh();
+});
