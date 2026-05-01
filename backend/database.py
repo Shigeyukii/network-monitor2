@@ -15,6 +15,13 @@ def init_db():
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = get_conn()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS groups (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE,
+            color      TEXT    NOT NULL DEFAULT '#58a6ff',
+            created_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+
         CREATE TABLE IF NOT EXISTS devices (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             name            TEXT    NOT NULL,
@@ -24,6 +31,7 @@ def init_db():
             snmp_port       INTEGER NOT NULL DEFAULT 161,
             snmp_version    TEXT    NOT NULL DEFAULT 'v2c',
             ping_interval   INTEGER NOT NULL DEFAULT 60,
+            group_id        INTEGER REFERENCES groups(id) ON DELETE SET NULL,
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         );
 
@@ -73,6 +81,13 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_interval', '60');
     """)
     conn.commit()
+
+    # Migration: add group_id to devices if it doesn't exist yet (for existing DBs)
+    existing_cols = [row[1] for row in conn.execute("PRAGMA table_info(devices)").fetchall()]
+    if "group_id" not in existing_cols:
+        conn.execute("ALTER TABLE devices ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL")
+        conn.commit()
+
     conn.close()
 
 

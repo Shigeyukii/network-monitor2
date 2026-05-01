@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from database import init_db, get_settings, cleanup_old_data
 from poller import poll_ping, poll_snmp
 from scheduler import scheduler, reschedule
-from router import devices, metrics, settings as settings_router
+from router import devices, metrics, settings as settings_router, groups
 from apscheduler.triggers.interval import IntervalTrigger
 
 logging.basicConfig(
@@ -72,6 +72,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Network Monitor", lifespan=lifespan)
 
+app.include_router(groups.router)
 app.include_router(devices.router)
 app.include_router(metrics.router)
 app.include_router(settings_router.router)

@@ -16,6 +16,7 @@ class DeviceIn(BaseModel):
     snmp_port: int = 161
     snmp_version: str = "v2c"
     ping_interval: int = 60
+    group_id: Optional[int] = None
 
 
 class DeviceUpdate(BaseModel):
@@ -26,6 +27,7 @@ class DeviceUpdate(BaseModel):
     snmp_port: Optional[int] = None
     snmp_version: Optional[str] = None
     ping_interval: Optional[int] = None
+    group_id: Optional[int] = None
 
 
 def _with_status(device, conn):
@@ -36,6 +38,12 @@ def _with_status(device, conn):
         (d["id"],),
     ).fetchone()
     d["latest_ping"] = dict(latest) if latest else None
+
+    group = None
+    if d.get("group_id"):
+        row = conn.execute("SELECT id, name, color FROM groups WHERE id=?", (d["group_id"],)).fetchone()
+        group = dict(row) if row else None
+    d["group"] = group
     return d
 
 
@@ -54,15 +62,17 @@ def create_device(body: DeviceIn):
     try:
         cur = conn.execute(
             """INSERT INTO devices (name, ip_address, snmp_enabled, snmp_community,
-                                    snmp_port, snmp_version, ping_interval)
-               VALUES (?,?,?,?,?,?,?)""",
+                                    snmp_port, snmp_version, ping_interval, group_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
             (body.name, body.ip_address, int(body.snmp_enabled),
-             body.snmp_community, body.snmp_port, body.snmp_version, body.ping_interval),
+             body.snmp_community, body.snmp_port, body.snmp_version, body.ping_interval,
+             body.group_id),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM devices WHERE id=?", (cur.lastrowid,)).fetchone()
+        result = _with_status(row, conn)
         conn.close()
-        return dict(row)
+        return result
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=400, detail=str(e))
@@ -87,9 +97,17 @@ def update_device(device_id: int, body: DeviceUpdate):
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
 
-    updates = {k: v for k, v in body.dict().items() if v is not None}
-    if "snmp_enabled" in body.dict() and body.snmp_enabled is not None:
-        updates["snmp_enabled"] = int(body.snmp_enabled)
+    # group_id=0 は「グループなし」を意味するので None に変換
+    body_dict = body.dict()
+    if body_dict.get("group_id") == 0:
+        body_dict["group_id"] = None
+
+    updates = {k: v for k, v in body_dict.items() if v is not None}
+    if "snmp_enabled" in body_dict and body_dict["snmp_enabled"] is not None:
+        updates["snmp_enabled"] = int(body_dict["snmp_enabled"])
+    # group_id は None（未グループ）も明示的に更新できるよう別途処理
+    if "group_id" in body_dict:
+        updates["group_id"] = body_dict["group_id"]
 
     if updates:
         set_clause = ", ".join(f"{k}=?" for k in updates)

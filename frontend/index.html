@@ -15,6 +15,7 @@
   <header>
     <h1 id="nav-home">🖧 <span>Network</span> Monitor</h1>
     <div class="spacer"></div>
+    <button class="btn" id="btn-manage-groups">🗂 グループ管理</button>
     <button class="btn btn-primary" id="btn-add-device">＋ デバイス追加</button>
     <button class="btn" id="btn-settings">⚙ 設定</button>
   </header>
@@ -43,6 +44,9 @@
           <div class="label">不明</div>
         </div>
       </div>
+
+      <!-- グループフィルタータブ -->
+      <div id="group-tabs" class="group-tabs"></div>
 
       <div id="device-grid" class="device-grid"></div>
     </div>
@@ -173,6 +177,13 @@
       </div>
 
       <div class="form-group">
+        <label>グループ</label>
+        <select id="field-group-id">
+          <option value="">未グループ</option>
+        </select>
+      </div>
+
+      <div class="form-group">
         <label>Ping 間隔（秒）</label>
         <input type="number" id="field-ping-interval" value="60" min="10" max="3600">
         <div class="hint">デバイス個別に設定できます（グローバル設定を上書き）</div>
@@ -213,6 +224,41 @@
         <button type="submit" class="btn btn-primary" id="modal-submit">追加</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ============================================================
+     Group management modal
+     ============================================================ -->
+<div id="group-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2>🗂 グループ管理</h2>
+
+    <!-- グループ一覧 -->
+    <div id="group-list" style="margin-bottom:20px"></div>
+
+    <!-- 新規グループ追加フォーム -->
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--muted)">新しいグループを追加</div>
+      <form id="group-add-form">
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div class="form-group" style="flex:1;margin-bottom:0">
+            <label>グループ名</label>
+            <input type="text" id="new-group-name" placeholder="例: 東京拠点" required>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>カラー</label>
+            <div id="color-picker" class="color-picker"></div>
+            <input type="hidden" id="new-group-color" value="#58a6ff">
+          </div>
+          <button type="submit" class="btn btn-primary" style="margin-bottom:0;align-self:flex-end">追加</button>
+        </div>
+      </form>
+    </div>
+
+    <div style="text-align:right;margin-top:20px">
+      <button class="btn" id="group-modal-close">閉じる</button>
+    </div>
   </div>
 </div>
 

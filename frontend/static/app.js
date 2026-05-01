@@ -72,7 +72,9 @@ function statusText(ping) {
 const state = {
   view: "dashboard",      // "dashboard" | "detail" | "settings"
   devices: [],
+  groups: [],
   summary: {},
+  activeGroupId: null,    // null=すべて, -1=未グループ, N=グループID
   detail: { device: null, hours: 24, ifIndex: null },
   charts: {},
   refreshTimer: null,
@@ -90,14 +92,17 @@ function showView(name) {
 // ============================================================
 async function loadDashboard() {
   try {
-    const [devices, summary] = await Promise.all([
+    const [devices, groups, summary] = await Promise.all([
       api.get("/api/devices"),
+      api.get("/api/groups"),
       api.get("/api/metrics/summary"),
     ]);
     state.devices = devices;
+    state.groups  = groups;
     state.summary = summary;
     renderSummary(summary);
-    renderDeviceGrid(devices);
+    renderGroupTabs();
+    renderDeviceGrid(filteredDevices());
   } catch (e) {
     toast("デバイス一覧の取得に失敗しました: " + e.message, "error");
   }
@@ -110,20 +115,62 @@ function renderSummary(s) {
   document.getElementById("sum-unknown").textContent = s.unknown;
 }
 
+function filteredDevices() {
+  if (state.activeGroupId === null) return state.devices;
+  if (state.activeGroupId === -1)   return state.devices.filter(d => !d.group_id);
+  return state.devices.filter(d => d.group_id === state.activeGroupId);
+}
+
+function renderGroupTabs() {
+  const container = document.getElementById("group-tabs");
+  const allCount = state.devices.length;
+  const ungrouped = state.devices.filter(d => !d.group_id).length;
+
+  const tabs = [
+    { id: null, label: "すべて", color: null, count: allCount },
+    ...state.groups.map(g => ({ id: g.id, label: g.name, color: g.color, count: g.device_count })),
+  ];
+  if (ungrouped > 0) {
+    tabs.push({ id: -1, label: "未グループ", color: "#8b949e", count: ungrouped });
+  }
+
+  container.innerHTML = tabs.map(t => {
+    const isActive = state.activeGroupId === t.id;
+    const dotHtml  = t.color ? `<span class="tab-dot" style="background:${t.color}"></span>` : "";
+    const style    = isActive && t.color ? `background:${t.color}` :
+                     isActive            ? `background:var(--accent)` : "";
+    return `<button class="group-tab ${isActive ? "active" : ""}" style="${style}"
+              onclick="setGroupFilter(${t.id === null ? "null" : t.id})">
+              ${dotHtml}${esc(t.label)}
+              <span class="tab-count">${t.count}</span>
+            </button>`;
+  }).join("");
+}
+
+function setGroupFilter(id) {
+  state.activeGroupId = id;
+  renderGroupTabs();
+  renderDeviceGrid(filteredDevices());
+}
+
 function renderDeviceGrid(devices) {
   const grid = document.getElementById("device-grid");
   if (devices.length === 0) {
+    const isEmpty = state.devices.length === 0;
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
       <div class="icon">📡</div>
-      <p>監視デバイスがまだ登録されていません</p>
-      <button class="btn btn-primary" onclick="openAddDevice()">＋ デバイスを追加</button>
+      <p>${isEmpty ? "監視デバイスがまだ登録されていません" : "このグループにはデバイスがありません"}</p>
+      ${isEmpty ? `<button class="btn btn-primary" onclick="openAddDevice()">＋ デバイスを追加</button>` : ""}
     </div>`;
     return;
   }
   grid.innerHTML = devices.map(d => {
-    const st = statusLabel(d.latest_ping);
+    const st  = statusLabel(d.latest_ping);
     const rtt = d.latest_ping ? fmtRtt(d.latest_ping.response_time) : "—";
     const ts  = d.latest_ping ? fmtTime(d.latest_ping.timestamp) : "未確認";
+    const groupBadge = d.group
+      ? `<span class="group-badge"><span class="dot" style="background:${d.group.color}"></span>${esc(d.group.name)}</span>`
+      : "";
     return `<div class="device-card status-${st}" onclick="openDetail(${d.id})">
       <div class="card-top">
         <div>
@@ -136,7 +183,8 @@ function renderDeviceGrid(devices) {
         <span class="rtt">RTT: ${rtt}</span>
         ${d.snmp_enabled ? `<span>📊 SNMP</span>` : ""}
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">${ts}</div>
+      ${groupBadge}
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${ts}</div>
     </div>`;
   }).join("");
 }
@@ -376,12 +424,21 @@ function destroyCharts() {
 // ============================================================
 // Add / Edit device modal
 // ============================================================
+function populateGroupSelect(selectedGroupId) {
+  const sel = document.getElementById("field-group-id");
+  sel.innerHTML = '<option value="">未グループ</option>' +
+    state.groups.map(g =>
+      `<option value="${g.id}" ${g.id === selectedGroupId ? "selected" : ""}>${esc(g.name)}</option>`
+    ).join("");
+}
+
 function openAddDevice() {
   const modal = document.getElementById("device-modal");
   document.getElementById("modal-title").textContent  = "デバイスを追加";
   document.getElementById("modal-submit").textContent = "追加";
   document.getElementById("device-form").reset();
   document.getElementById("device-id").value = "";
+  populateGroupSelect(null);
   toggleSnmpFields();
   modal.style.display = "flex";
 }
@@ -396,6 +453,7 @@ async function openEditDevice(id) {
     document.getElementById("field-name").value           = d.name;
     document.getElementById("field-ip").value             = d.ip_address;
     document.getElementById("field-ping-interval").value  = d.ping_interval;
+    populateGroupSelect(d.group_id || null);
     document.getElementById("field-snmp-enabled").checked = !!d.snmp_enabled;
     document.getElementById("field-community").value      = d.snmp_community;
     document.getElementById("field-port").value           = d.snmp_port;
@@ -419,10 +477,12 @@ function closeDeviceModal() {
 async function submitDeviceForm(e) {
   e.preventDefault();
   const id = document.getElementById("device-id").value;
+  const groupVal = document.getElementById("field-group-id").value;
   const body = {
     name:           document.getElementById("field-name").value.trim(),
     ip_address:     document.getElementById("field-ip").value.trim(),
     ping_interval:  parseInt(document.getElementById("field-ping-interval").value) || 60,
+    group_id:       groupVal ? parseInt(groupVal) : null,
     snmp_enabled:   document.getElementById("field-snmp-enabled").checked,
     snmp_community: document.getElementById("field-community").value.trim() || "public",
     snmp_port:      parseInt(document.getElementById("field-port").value) || 161,
@@ -457,6 +517,114 @@ async function confirmDelete(id, name) {
   } catch (e) {
     toast("削除失敗: " + e.message, "error");
   }
+}
+
+// ============================================================
+// Group management modal
+// ============================================================
+
+const GROUP_COLORS = [
+  "#58a6ff", "#3fb950", "#d29922", "#f85149",
+  "#bc8cff", "#ff7b72", "#39d353", "#8b949e",
+];
+
+function openGroupModal() {
+  renderColorPicker("#58a6ff");
+  renderGroupList();
+  document.getElementById("group-modal").style.display = "flex";
+}
+
+function closeGroupModal() {
+  document.getElementById("group-modal").style.display = "none";
+}
+
+function renderColorPicker(selected) {
+  document.getElementById("new-group-color").value = selected;
+  document.getElementById("color-picker").innerHTML = GROUP_COLORS.map(c =>
+    `<span class="color-swatch ${c === selected ? "selected" : ""}"
+           style="background:${c}" title="${c}"
+           onclick="selectColor('${c}')"></span>`
+  ).join("");
+}
+
+function selectColor(color) {
+  document.getElementById("new-group-color").value = color;
+  renderColorPicker(color);
+}
+
+function renderGroupList() {
+  const el = document.getElementById("group-list");
+  if (state.groups.length === 0) {
+    el.innerHTML = `<p style="color:var(--muted);font-size:13px">グループはまだありません</p>`;
+    return;
+  }
+  el.innerHTML = state.groups.map(g => `
+    <div class="group-list-item" id="group-item-${g.id}">
+      <span class="group-color-dot" style="background:${g.color}"></span>
+      <span class="group-name">${esc(g.name)}</span>
+      <span class="group-meta">${g.device_count} 台</span>
+      <button class="btn btn-sm" onclick="startEditGroup(${g.id}, '${esc(g.name)}', '${g.color}')">編集</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteGroup(${g.id}, '${esc(g.name)}')">削除</button>
+    </div>
+  `).join("");
+}
+
+function startEditGroup(id, name, color) {
+  const item = document.getElementById(`group-item-${id}`);
+  item.innerHTML = `
+    <span class="group-color-dot" style="background:${color}"></span>
+    <input class="group-edit-input" id="edit-name-${id}" value="${esc(name)}">
+    <button class="btn btn-sm btn-primary" onclick="submitEditGroup(${id}, '${color}')">保存</button>
+    <button class="btn btn-sm" onclick="renderGroupList()">キャンセル</button>
+  `;
+}
+
+async function submitEditGroup(id, color) {
+  const name = document.getElementById(`edit-name-${id}`).value.trim();
+  if (!name) return;
+  try {
+    await api.put(`/api/groups/${id}`, { name, color });
+    await reloadGroups();
+    toast("グループを更新しました");
+  } catch (e) {
+    toast("更新失敗: " + e.message, "error");
+  }
+}
+
+async function deleteGroup(id, name) {
+  if (!confirm(`「${name}」を削除しますか？\n所属デバイスは未グループになります。`)) return;
+  try {
+    await api.del(`/api/groups/${id}`);
+    await reloadGroups();
+    if (state.activeGroupId === id) state.activeGroupId = null;
+    toast(`「${name}」を削除しました`);
+  } catch (e) {
+    toast("削除失敗: " + e.message, "error");
+  }
+}
+
+async function submitAddGroup(e) {
+  e.preventDefault();
+  const name  = document.getElementById("new-group-name").value.trim();
+  const color = document.getElementById("new-group-color").value;
+  if (!name) return;
+  try {
+    await api.post("/api/groups", { name, color });
+    document.getElementById("new-group-name").value = "";
+    renderColorPicker("#58a6ff");
+    await reloadGroups();
+    toast(`「${name}」を追加しました`);
+  } catch (e) {
+    toast("追加失敗: " + e.message, "error");
+  }
+}
+
+async function reloadGroups() {
+  state.groups = await api.get("/api/groups");
+  state.devices = await api.get("/api/devices");
+  renderGroupList();
+  renderGroupTabs();
+  renderDeviceGrid(filteredDevices());
 }
 
 // ============================================================
@@ -521,6 +689,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("btn-add-device").addEventListener("click", openAddDevice);
   document.getElementById("btn-settings").addEventListener("click", openSettings);
+  document.getElementById("btn-manage-groups").addEventListener("click", openGroupModal);
+
+  // Group modal
+  document.getElementById("group-modal-close").addEventListener("click", closeGroupModal);
+  document.getElementById("group-modal").addEventListener("click", e => {
+    if (e.target === e.currentTarget) closeGroupModal();
+  });
+  document.getElementById("group-add-form").addEventListener("submit", submitAddGroup);
 
   // Device form
   document.getElementById("device-form").addEventListener("submit", submitDeviceForm);
