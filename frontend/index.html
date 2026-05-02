@@ -16,6 +16,7 @@
     <h1 id="nav-home">🖧 <span>Network</span> Monitor</h1>
     <div class="spacer"></div>
     <button class="btn" id="btn-manage-groups">🗂 グループ管理</button>
+    <button class="btn" id="btn-report">📊 レポート</button>
     <button class="btn btn-primary" id="btn-add-device">＋ デバイス追加</button>
     <button class="btn" id="btn-settings">⚙ 設定</button>
     <button class="btn btn-bell" id="btn-alerts" title="アラート">
@@ -109,6 +110,35 @@
           </div>
         </div>
 
+        <!-- TCP ポート監視 -->
+        <div class="panel wide" id="port-section">
+          <h3>TCP ポート監視</h3>
+          <div id="port-table-wrap">
+            <table class="port-table">
+              <thead>
+                <tr>
+                  <th>ポート</th><th>ラベル</th><th>状態</th><th>応答時間</th><th>最終確認</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="port-table-body"></tbody>
+            </table>
+            <div id="port-empty" style="display:none;color:var(--muted);font-size:13px;padding:8px 0">
+              ポートが登録されていません
+            </div>
+          </div>
+          <form id="port-add-form" style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
+            <div class="form-group" style="margin-bottom:0">
+              <label>ポート番号</label>
+              <input type="number" id="new-port-num" min="1" max="65535" placeholder="例: 80" style="width:110px">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label>ラベル（任意）</label>
+              <input type="text" id="new-port-label" placeholder="例: HTTP" style="width:120px">
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">追加</button>
+          </form>
+        </div>
+
         <!-- トラフィックグラフ（SNMP有効時のみ） -->
         <div class="panel wide" id="traffic-section" style="display:none">
           <h3>トラフィック (SNMP)</h3>
@@ -124,6 +154,40 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- ============================================================
+         Report view
+         ============================================================ -->
+    <div id="view-report" class="view">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+        <button class="btn btn-sm" id="btn-report-back">← 一覧へ</button>
+        <h2 style="font-size:18px;font-weight:700">📊 稼働率レポート</h2>
+        <div class="spacer"></div>
+        <a id="btn-csv-download" href="/api/reports/uptime/csv" download="uptime_report.csv"
+           class="btn btn-sm">⬇ CSV ダウンロード</a>
+      </div>
+
+      <div class="panel">
+        <table class="report-table" id="report-table">
+          <thead>
+            <tr>
+              <th>デバイス名</th>
+              <th>IP アドレス</th>
+              <th>グループ</th>
+              <th>現在の状態</th>
+              <th>1時間</th>
+              <th>24時間</th>
+              <th>7日</th>
+              <th>30日</th>
+            </tr>
+          </thead>
+          <tbody id="report-tbody"></tbody>
+        </table>
+        <div id="report-empty" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+          データがありません
+        </div>
       </div>
     </div>
 

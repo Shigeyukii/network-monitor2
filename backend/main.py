@@ -9,9 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from database import init_db, get_settings, cleanup_old_data
-from poller import poll_ping, poll_snmp
+from poller import poll_ping, poll_snmp, poll_ports
 from scheduler import scheduler, reschedule
-from router import devices, metrics, settings as settings_router, groups, alerts
+from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports
 from apscheduler.triggers.interval import IntervalTrigger
 
 logging.basicConfig(
@@ -31,6 +31,7 @@ def run_ping_polls():
     conn.close()
     for row in rows:
         poll_ping(row["id"], row["ip_address"])
+        poll_ports(row["id"], row["ip_address"])
 
 
 def run_snmp_polls():
@@ -77,6 +78,8 @@ app.include_router(devices.router)
 app.include_router(metrics.router)
 app.include_router(settings_router.router)
 app.include_router(alerts.router)
+app.include_router(ports.router)
+app.include_router(reports.router)
 
 
 @app.post("/api/settings/reschedule", tags=["settings"])

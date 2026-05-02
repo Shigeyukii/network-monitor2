@@ -84,6 +84,29 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_traffic_device_iface_time
             ON snmp_traffic(device_id, if_index, timestamp DESC);
 
+        CREATE TABLE IF NOT EXISTS port_checks (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL,
+            port      INTEGER NOT NULL,
+            label     TEXT    NOT NULL DEFAULT '',
+            enabled   INTEGER NOT NULL DEFAULT 1,
+            UNIQUE(device_id, port),
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS port_results (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id     INTEGER NOT NULL,
+            port          INTEGER NOT NULL,
+            timestamp     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            status        INTEGER NOT NULL,
+            response_time REAL,
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_port_results_device_port_time
+            ON port_results(device_id, port, timestamp DESC);
+
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -118,6 +141,7 @@ def cleanup_old_data():
     """Remove data older than retention limits to keep DB size manageable."""
     conn = get_conn()
     conn.execute("DELETE FROM ping_results WHERE timestamp < datetime('now','localtime','-7 days')")
+    conn.execute("DELETE FROM port_results WHERE timestamp < datetime('now','localtime','-7 days')")
     conn.execute("DELETE FROM snmp_traffic WHERE timestamp < datetime('now','localtime','-30 days')")
     conn.commit()
     conn.close()

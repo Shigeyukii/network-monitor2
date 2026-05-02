@@ -4,6 +4,7 @@ import re
 import time
 import datetime
 import asyncio
+import socket
 import logging
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,52 @@ def poll_ping(device_id: int, ip: str):
             notify(device_name, ip, alert_type, timestamp, get_settings())
         except Exception as e:
             logger.error("notify error: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# TCP Port check
+# ---------------------------------------------------------------------------
+
+def check_port(ip: str, port: int, timeout: int = 3) -> tuple:
+    """Return (is_open: bool, response_time_ms: float|None)."""
+    start = time.time()
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((ip, port))
+        elapsed = (time.time() - start) * 1000
+        sock.close()
+        if result == 0:
+            return True, round(elapsed, 2)
+        return False, None
+    except Exception as e:
+        logger.debug("port check error %s:%d: %s", ip, port, e)
+        return False, None
+
+
+def poll_ports(device_id: int, ip: str):
+    conn = get_conn()
+    checks = conn.execute(
+        "SELECT port FROM port_checks WHERE device_id=? AND enabled=1",
+        (device_id,),
+    ).fetchall()
+    if not checks:
+        conn.close()
+        return
+
+    for check in checks:
+        port = check["port"]
+        status, rtt = check_port(ip, port)
+        conn.execute(
+            "INSERT INTO port_results (device_id, port, status, response_time) VALUES (?,?,?,?)",
+            (device_id, port, 1 if status else 0, rtt),
+        )
+        logger.info("port %s:%d → %s  %s", ip, port,
+                    "OPEN" if status else "CLOSED",
+                    f"{rtt:.1f}ms" if rtt else "timeout")
+
+    conn.commit()
+    conn.close()
 
 
 # ---------------------------------------------------------------------------

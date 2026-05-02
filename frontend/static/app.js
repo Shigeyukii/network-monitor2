@@ -210,15 +210,17 @@ async function openDetail(deviceId) {
 async function refreshDetail() {
   const id = state.detail.device.id;
   try {
-    const [device, pingData] = await Promise.all([
+    const [device, pingData, portData] = await Promise.all([
       api.get(`/api/devices/${id}`),
       api.get(`/api/metrics/ping/${id}?hours=${state.detail.hours}`),
+      api.get(`/api/devices/${id}/ports`),
     ]);
     state.detail.device = device;
     renderDetailHeader(device);
     renderDeviceInfo(device);
     renderPingChart(pingData);
     renderUptimeBar(pingData);
+    renderPortTable(portData, id);
 
     if (device.snmp_enabled) {
       document.getElementById("traffic-section").style.display = "";
@@ -628,6 +630,116 @@ async function reloadGroups() {
 }
 
 // ============================================================
+// Port management (in detail view)
+// ============================================================
+
+function renderPortTable(ports, deviceId) {
+  const tbody = document.getElementById("port-table-body");
+  const empty = document.getElementById("port-empty");
+
+  if (ports.length === 0) {
+    tbody.innerHTML = "";
+    empty.style.display = "";
+    return;
+  }
+  empty.style.display = "none";
+  tbody.innerHTML = ports.map(p => {
+    const st  = p.latest ? (p.latest.status ? "up" : "down") : "unknown";
+    const rtt = p.latest?.response_time ? fmtRtt(p.latest.response_time) : "—";
+    const ts  = p.latest ? fmtTime(p.latest.timestamp) : "未確認";
+    const stText = st === "up" ? "OPEN" : st === "down" ? "CLOSED" : "不明";
+    return `<tr>
+      <td><span class="port-num">${p.port}</span></td>
+      <td>${esc(p.label || "—")}</td>
+      <td><span class="status-badge ${st}">${stText}</span></td>
+      <td>${rtt}</td>
+      <td style="font-size:11px;color:var(--muted)">${ts}</td>
+      <td><button class="btn btn-sm btn-danger"
+            onclick="removePort(${deviceId}, ${p.port})">削除</button></td>
+    </tr>`;
+  }).join("");
+}
+
+async function removePort(deviceId, port) {
+  if (!confirm(`ポート ${port} の監視を削除しますか？`)) return;
+  try {
+    await api.del(`/api/devices/${deviceId}/ports/${port}`);
+    toast(`ポート ${port} を削除しました`);
+    refreshDetail();
+  } catch (e) {
+    toast("削除失敗: " + e.message, "error");
+  }
+}
+
+async function submitAddPort(e) {
+  e.preventDefault();
+  const deviceId = state.detail.device.id;
+  const port  = parseInt(document.getElementById("new-port-num").value);
+  const label = document.getElementById("new-port-label").value.trim();
+  if (!port) return;
+  try {
+    await api.post(`/api/devices/${deviceId}/ports`, { port, label });
+    document.getElementById("new-port-num").value   = "";
+    document.getElementById("new-port-label").value = "";
+    toast(`ポート ${port} を追加しました`);
+    refreshDetail();
+  } catch (e) {
+    toast("追加失敗: " + e.message, "error");
+  }
+}
+
+// ============================================================
+// Report view
+// ============================================================
+
+async function openReport() {
+  showView("report");
+  try {
+    const data = await api.get("/api/reports/uptime");
+    renderReportTable(data);
+  } catch (e) {
+    toast("レポート取得失敗: " + e.message, "error");
+  }
+}
+
+function fmtUptime(u) {
+  if (!u || u.pct === null) return `<span class="uptime-pct nodata">—</span>`;
+  const cls = u.pct >= 99 ? "high" : u.pct >= 95 ? "mid" : "low";
+  return `<span class="uptime-pct ${cls}">${u.pct}%</span>`;
+}
+
+function renderReportTable(data) {
+  const tbody  = document.getElementById("report-tbody");
+  const empty  = document.getElementById("report-empty");
+  const table  = document.getElementById("report-table");
+
+  if (data.length === 0) {
+    table.style.display = "none";
+    empty.style.display = "";
+    return;
+  }
+  table.style.display = "";
+  empty.style.display = "none";
+
+  tbody.innerHTML = data.map(r => {
+    const st = statusLabel(r.latest_ping);
+    const groupBadge = r.group
+      ? `<span class="group-badge"><span class="dot" style="background:${r.group.color}"></span>${esc(r.group.name)}</span>`
+      : `<span style="color:var(--muted);font-size:12px">未グループ</span>`;
+    return `<tr>
+      <td style="font-weight:600">${esc(r.name)}</td>
+      <td style="font-family:monospace;font-size:12px">${esc(r.ip_address)}</td>
+      <td>${groupBadge}</td>
+      <td><span class="status-badge ${st}">${statusText(r.latest_ping)}</span></td>
+      <td>${fmtUptime(r.uptimes["1h"])}</td>
+      <td>${fmtUptime(r.uptimes["24h"])}</td>
+      <td>${fmtUptime(r.uptimes["7d"])}</td>
+      <td>${fmtUptime(r.uptimes["30d"])}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ============================================================
 // Alert panel
 // ============================================================
 
@@ -811,6 +923,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-add-device").addEventListener("click", openAddDevice);
   document.getElementById("btn-settings").addEventListener("click", openSettings);
   document.getElementById("btn-manage-groups").addEventListener("click", openGroupModal);
+  document.getElementById("btn-report").addEventListener("click", openReport);
+  document.getElementById("btn-report-back").addEventListener("click", () => {
+    showView("dashboard");
+    loadDashboard();
+  });
+
+  // Port form in detail view
+  document.getElementById("port-add-form").addEventListener("submit", submitAddPort);
 
   // Group modal
   document.getElementById("group-modal-close").addEventListener("click", closeGroupModal);

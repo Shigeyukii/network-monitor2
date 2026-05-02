@@ -581,6 +581,58 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
 }
 .alert-empty .icon { font-size: 36px; margin-bottom: 10px; }
 
+/* ---- Port table ---- */
+.port-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.port-table th {
+  text-align: left;
+  padding: 6px 10px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+.port-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  vertical-align: middle;
+}
+.port-table tr:last-child td { border-bottom: none; }
+.port-num { font-family: monospace; font-weight: 600; }
+
+/* ---- Report table ---- */
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.report-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.report-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  vertical-align: middle;
+}
+.report-table tr:last-child td { border-bottom: none; }
+.report-table tr:hover td { background: var(--surface2); }
+
+.uptime-pct {
+  font-weight: 600;
+  font-family: monospace;
+}
+.uptime-pct.high   { color: var(--green); }
+.uptime-pct.mid    { color: var(--orange); }
+.uptime-pct.low    { color: var(--red); }
+.uptime-pct.nodata { color: var(--muted); font-weight: 400; }
+
 /* ---- Group name inline edit ---- */
 .group-edit-input {
   background: var(--surface2);
