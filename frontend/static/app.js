@@ -870,6 +870,148 @@ async function saveSettings(e) {
 }
 
 // ============================================================
+// Network Map
+// ============================================================
+
+const mapState = {
+  data:        { nodes: [], edges: [], unplaced: [] },
+  initialized: false,
+  edgeMode:    false,
+  panelOpen:   true,
+};
+
+async function openMapView() {
+  showView("map");
+
+  if (!mapState.initialized) {
+    NetworkMap.init(document.getElementById("map-canvas"), {
+      onNodeClick:      (id) => openDetail(id),
+      onPositionSave:   (id, x, y) => api.put(`/api/map/nodes/${id}`, { x, y }).catch(() => {}),
+      onEdgeCreate:     async (srcId, tgtId) => {
+        try {
+          await api.post("/api/map/edges", { source_id: srcId, target_id: tgtId });
+          await reloadMapData();
+          toast("接続を追加しました");
+        } catch (e) {
+          toast("接続失敗: " + e.message, "error");
+        }
+        setMapEdgeMode(false);
+      },
+      onEdgeModeChange: (startNode) => {
+        document.getElementById("map-edge-hint").style.display = startNode ? "" : "none";
+      },
+    });
+    mapState.initialized = true;
+  }
+
+  await reloadMapData();
+  NetworkMap.startAnimation();
+}
+
+function closeMapView() {
+  NetworkMap.stopAnimation();
+  setMapEdgeMode(false);
+  showView("dashboard");
+  loadDashboard();
+}
+
+async function reloadMapData() {
+  try {
+    mapState.data = await api.get("/api/map");
+    NetworkMap.setData(mapState.data);
+    renderMapPanel(mapState.data);
+  } catch (e) {
+    toast("マップデータ取得失敗: " + e.message, "error");
+  }
+}
+
+function renderMapPanel({ nodes, edges, unplaced }) {
+  // 未配置
+  const unplacedEl = document.getElementById("map-unplaced-list");
+  unplacedEl.innerHTML = unplaced.length === 0
+    ? `<div style="font-size:12px;color:var(--muted)">すべて配置済み</div>`
+    : unplaced.map(d => `
+        <div class="map-device-item">
+          <div>
+            <div class="dname">${esc(d.name)}</div>
+            <div class="dip">${esc(d.ip_address)}</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="addNodeToMap(${d.device_id})">追加</button>
+        </div>`).join("");
+
+  // 配置済み
+  const placedEl = document.getElementById("map-placed-list");
+  placedEl.innerHTML = nodes.length === 0
+    ? `<div style="font-size:12px;color:var(--muted)">デバイスがありません</div>`
+    : nodes.map(n => {
+        const st = n.status === "up" ? "up" : n.status === "down" ? "down" : "unknown";
+        return `
+          <div class="map-device-item">
+            <span class="status-badge ${st}" style="font-size:9px;padding:1px 5px">${n.status.toUpperCase()}</span>
+            <div class="dname">${esc(n.name)}</div>
+            <button class="btn btn-sm btn-danger" onclick="removeNodeFromMap(${n.device_id})">✕</button>
+          </div>`;
+      }).join("");
+
+  // エッジ一覧
+  const edgeEl = document.getElementById("map-edge-list");
+  edgeEl.innerHTML = edges.length === 0
+    ? `<div style="font-size:12px;color:var(--muted)">接続なし</div>`
+    : edges.map(e => {
+        const src = nodes.find(n => n.device_id === e.source_id);
+        const tgt = nodes.find(n => n.device_id === e.target_id);
+        const srcName = src ? src.name : "?";
+        const tgtName = tgt ? tgt.name : "?";
+        return `
+          <div class="map-edge-item">
+            <span class="edge-names">${esc(srcName)} ↔ ${esc(tgtName)}</span>
+            <button class="btn btn-sm btn-danger" onclick="removeEdge(${e.id})" style="padding:1px 5px;font-size:10px">✕</button>
+          </div>`;
+      }).join("");
+}
+
+async function addNodeToMap(deviceId) {
+  // ランダムな初期位置（中央付近）
+  const x = 0.3 + Math.random() * 0.4;
+  const y = 0.2 + Math.random() * 0.6;
+  try {
+    await api.post(`/api/map/nodes/${deviceId}`, { x, y });
+    await reloadMapData();
+  } catch (e) {
+    toast("追加失敗: " + e.message, "error");
+  }
+}
+
+async function removeNodeFromMap(deviceId) {
+  try {
+    await api.del(`/api/map/nodes/${deviceId}`);
+    await reloadMapData();
+  } catch (e) {
+    toast("削除失敗: " + e.message, "error");
+  }
+}
+
+async function removeEdge(edgeId) {
+  try {
+    await api.del(`/api/map/edges/${edgeId}`);
+    await reloadMapData();
+    toast("接続を削除しました");
+  } catch (e) {
+    toast("削除失敗: " + e.message, "error");
+  }
+}
+
+function setMapEdgeMode(active) {
+  mapState.edgeMode = active;
+  NetworkMap.setEdgeMode(active);
+  const btn  = document.getElementById("btn-map-edge-mode");
+  const hint = document.getElementById("map-edge-hint");
+  btn.textContent   = active ? "✕ キャンセル" : "🔗 接続を追加";
+  btn.className     = active ? "btn btn-sm btn-danger" : "btn btn-sm";
+  hint.style.display = active ? "" : "none";
+}
+
+// ============================================================
 // Import / Export
 // ============================================================
 
@@ -967,6 +1109,21 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-report-back").addEventListener("click", () => {
     showView("dashboard");
     loadDashboard();
+  });
+
+  // Network Map
+  document.getElementById("btn-map").addEventListener("click", openMapView);
+  document.getElementById("btn-map-back").addEventListener("click", closeMapView);
+  document.getElementById("btn-map-refresh").addEventListener("click", reloadMapData);
+  document.getElementById("btn-map-edge-mode").addEventListener("click", () => {
+    setMapEdgeMode(!mapState.edgeMode);
+  });
+  document.getElementById("btn-map-panel-toggle").addEventListener("click", () => {
+    mapState.panelOpen = !mapState.panelOpen;
+    document.getElementById("map-panel").classList.toggle("hidden", !mapState.panelOpen);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && mapState.edgeMode) setMapEdgeMode(false);
   });
 
   // Port form in detail view

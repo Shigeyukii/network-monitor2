@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="/static/map.js"></script>
 </head>
 <body>
 <div id="app">
@@ -17,6 +18,7 @@
     <div class="spacer"></div>
     <button class="btn" id="btn-manage-groups">🗂 グループ管理</button>
     <button class="btn" id="btn-report">📊 レポート</button>
+    <button class="btn" id="btn-map">🌌 マップ</button>
     <button class="btn btn-primary" id="btn-add-device">＋ デバイス追加</button>
     <button class="btn" id="btn-settings">⚙ 設定</button>
     <button class="btn btn-bell" id="btn-alerts" title="アラート">
@@ -155,6 +157,52 @@
         </div>
 
       </div>
+    </div>
+
+    <!-- ============================================================
+         Network Map view
+         ============================================================ -->
+    <div id="view-map" class="view map-view">
+
+      <!-- コントロールバー -->
+      <div class="map-controls">
+        <button class="btn btn-sm" id="btn-map-back">← 一覧へ</button>
+        <span style="font-weight:600;color:var(--text)">🌌 ネットワークマップ</span>
+        <div style="width:1px;height:20px;background:var(--border)"></div>
+        <button class="btn btn-sm" id="btn-map-edge-mode">🔗 接続を追加</button>
+        <span id="map-edge-hint" style="font-size:12px;color:var(--orange);display:none">
+          接続する2つの星をクリック（ESCでキャンセル）
+        </span>
+        <div class="spacer"></div>
+        <button class="btn btn-sm" id="btn-map-refresh">↺ 更新</button>
+        <button class="btn btn-sm" id="btn-map-panel-toggle">☰ デバイス</button>
+      </div>
+
+      <!-- Canvas + サイドパネル -->
+      <div class="map-body">
+        <canvas id="map-canvas"></canvas>
+
+        <!-- サイドパネル（未配置デバイス・接続一覧） -->
+        <div class="map-panel" id="map-panel">
+
+          <div class="map-panel-section">
+            <div class="map-panel-title">未配置のデバイス</div>
+            <div id="map-unplaced-list" class="map-device-list"></div>
+          </div>
+
+          <div class="map-panel-section">
+            <div class="map-panel-title">配置済みデバイス</div>
+            <div id="map-placed-list" class="map-device-list"></div>
+          </div>
+
+          <div class="map-panel-section">
+            <div class="map-panel-title">接続線</div>
+            <div id="map-edge-list" class="map-edge-list"></div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
 
     <!-- ============================================================

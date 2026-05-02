@@ -107,6 +107,23 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_port_results_device_port_time
             ON port_results(device_id, port, timestamp DESC);
 
+        CREATE TABLE IF NOT EXISTS map_nodes (
+            device_id INTEGER PRIMARY KEY,
+            x         REAL NOT NULL DEFAULT 0.5,
+            y         REAL NOT NULL DEFAULT 0.5,
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS map_edges (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            label     TEXT NOT NULL DEFAULT '',
+            UNIQUE(source_id, target_id),
+            FOREIGN KEY (source_id) REFERENCES devices(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
