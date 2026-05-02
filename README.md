@@ -1,7 +1,8 @@
 # Network Monitor
 
 Webブラウザで確認できるネットワーク監視アプリケーションです。  
-Ping による死活監視・SNMP トラフィック監視・TCP ポート監視をグラフで可視化し、障害発生時には Teams / Slack へ自動通知します。
+Ping 死活監視・SNMP トラフィック監視・TCP ポート監視をグラフで可視化し、障害発生時には Teams / Slack へ自動通知します。  
+ネットワーク構成を星座風マップで可視化する機能も備えています。
 
 ---
 
@@ -35,12 +36,24 @@ Ping による死活監視・SNMP トラフィック監視・TCP ポート監視
 | 期間フィルター | 1 時間 / 6 時間 / 24 時間 / 3 日 / 7 日 |
 | 稼働率レポート | 1 時間 / 24 時間 / 7 日 / 30 日の稼働率を一覧表示・CSV エクスポート |
 
+### ネットワークマップ
+
+| 機能 | 説明 |
+|---|---|
+| 星座風マップ | デバイスを星に見立てて夜空に配置、接続線で構成を可視化 |
+| 状態で色分け | UP=青白・DOWN=赤・Unknown=暗灰 |
+| トラフィック連動 | SNMP トラフィックが多いほど星が大きく金色に輝く |
+| 瞬きアニメーション | 全星が固有のリズムで瞬く、接続線は流れるダッシュアニメーション |
+| ドラッグ配置 | 星をドラッグして自由に配置・位置は自動保存 |
+| 接続線管理 | 任意のデバイス間に接続線を追加・削除 |
+
 ### 管理
 
 | 機能 | 説明 |
 |---|---|
 | デバイス管理 | デバイスの追加・編集・削除 |
 | 監視間隔変更 | Ping・SNMP の間隔を Web 画面から変更・即時反映 |
+| 設定のバックアップ・復元 | デバイス・グループ・ポート設定を JSON でエクスポート／インポート |
 | 自動データクリーンアップ | Ping / ポート結果: 7 日間 / SNMP トラフィック: 30 日間保持 |
 
 ---
@@ -58,27 +71,30 @@ Ping による死活監視・SNMP トラフィック監視・TCP ポート監視
 ```
 network-monitor2/
 ├── backend/
-│   ├── main.py            # FastAPI アプリ・スケジューラー起動
-│   ├── database.py        # SQLite 初期化・接続管理
-│   ├── poller.py          # Ping / TCP ポート / SNMP ポーリング実装
-│   ├── notifier.py        # Teams / Slack Webhook 通知
-│   ├── scheduler.py       # APScheduler ラッパー
+│   ├── main.py              # FastAPI アプリ・スケジューラー起動
+│   ├── database.py          # SQLite 初期化・接続管理
+│   ├── poller.py            # Ping / TCP ポート / SNMP ポーリング実装
+│   ├── notifier.py          # Teams / Slack Webhook 通知
+│   ├── scheduler.py         # APScheduler ラッパー
 │   └── router/
-│       ├── devices.py     # デバイス CRUD API
-│       ├── groups.py      # グループ CRUD API
-│       ├── ports.py       # TCP ポート監視 API
-│       ├── metrics.py     # メトリクス取得 API
-│       ├── alerts.py      # アラート API
-│       ├── reports.py     # 稼働率レポート API
-│       └── settings.py    # 監視設定 API
+│       ├── devices.py       # デバイス CRUD API
+│       ├── groups.py        # グループ CRUD API
+│       ├── ports.py         # TCP ポート監視 API
+│       ├── metrics.py       # メトリクス取得 API
+│       ├── alerts.py        # アラート API
+│       ├── reports.py       # 稼働率レポート API
+│       ├── importexport.py  # 設定インポート・エクスポート API
+│       ├── networkmap.py    # ネットワークマップ API
+│       └── settings.py      # 監視設定 API
 ├── frontend/
-│   ├── index.html         # SPA（シングルページアプリ）
+│   ├── index.html           # SPA（シングルページアプリ）
 │   └── static/
-│       ├── app.js         # フロントエンドロジック
-│       └── style.css      # スタイルシート
+│       ├── app.js           # フロントエンドロジック
+│       ├── map.js           # 星座風マップ Canvas レンダラー
+│       └── style.css        # スタイルシート
 ├── data/
-│   └── monitor.db         # SQLite データベース（自動生成）
-└── requirements.txt       # Python 依存パッケージ
+│   └── monitor.db           # SQLite データベース（自動生成）
+└── requirements.txt         # Python 依存パッケージ
 ```
 
 ---
@@ -203,6 +219,37 @@ http://<サーバーの IP アドレス>:8000
 2. Ping 間隔・SNMP 間隔（秒）を入力
 3. **「保存して適用」** をクリック（即時反映）
 
+### ネットワークマップの使い方
+
+1. ヘッダーの **「🌌 マップ」** をクリック
+2. 右側パネルの **「追加」** ボタンでデバイスを星としてマップに配置
+3. 星をドラッグして自由に位置を調整（離すと自動保存）
+4. **「🔗 接続を追加」** をクリックして接続モードに入り、繋ぎたい星を順にクリック
+5. 星にホバーするとデバイス名・IP・RTT・トラフィックが表示
+6. 星をクリックするとデバイス詳細ビューへ遷移
+
+| 星の見た目 | 意味 |
+|---|---|
+| 青白い星 | UP（正常） |
+| 金色の輝く星 | UP + 高トラフィック |
+| 赤い星 | DOWN（障害） |
+| 暗い星 | 状態不明 |
+| 大きい星 | トラフィック量が多い |
+| 流れる接続線 | UP デバイス間の接続 |
+
+### 設定のバックアップ・復元
+
+**エクスポート（バックアップ）:**
+1. **「⚙ 設定」** → 「デバイス設定のバックアップ・復元」セクション
+2. **「⬇ JSON をダウンロード」** でファイルを保存
+
+**インポート（復元）:**
+1. 同セクションの **「⬆ JSON を読み込む」** でファイルを選択
+2. 自動的に登録が完了し、件数が表示される
+
+> アプリのバージョンアップ時や別端末への移行時に便利です。  
+> 同じ IP アドレスのデバイスはスキップされるため、重複登録の心配はありません。
+
 ---
 
 ## API エンドポイント
@@ -257,6 +304,24 @@ http://<サーバーの IP アドレス>:8000
 |---|---|---|
 | GET | `/api/reports/uptime` | 稼働率レポート取得 |
 | GET | `/api/reports/uptime/csv` | 稼働率 CSV ダウンロード |
+
+### インポート・エクスポート
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/export` | 設定を JSON ファイルとしてダウンロード |
+| POST | `/api/import` | JSON ファイルから設定を一括登録 |
+
+### ネットワークマップ
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/map` | マップデータ取得（ノード・エッジ・未配置デバイス） |
+| POST | `/api/map/nodes/{device_id}` | デバイスをマップに追加 |
+| PUT | `/api/map/nodes/{device_id}` | ノード位置を更新 |
+| DELETE | `/api/map/nodes/{device_id}` | デバイスをマップから削除 |
+| POST | `/api/map/edges` | 接続線を追加 |
+| DELETE | `/api/map/edges/{id}` | 接続線を削除 |
 
 ### 設定
 
@@ -317,6 +382,8 @@ SQLite を使用しており、追加のデータベースサーバーは不要�
 | snmp_interfaces | インターフェース情報 | 無期限 |
 | snmp_traffic | トラフィック履歴 | 30 日間 |
 | alerts | アラート履歴 | 無期限 |
+| map_nodes | マップ上のノード位置 | 無期限 |
+| map_edges | マップ上の接続線 | 無期限 |
 | settings | 監視設定 | 無期限 |
 
 ---
@@ -332,3 +399,4 @@ SQLite を使用しており、追加のデータベースサーバーは不要�
 | 通知 | urllib（標準ライブラリ）で Webhook POST |
 | フロントエンド | Vanilla JS + Chart.js |
 | グラフ | Chart.js 4.x + chartjs-adapter-date-fns |
+| ネットワークマップ | HTML5 Canvas（requestAnimationFrame アニメーション） |
