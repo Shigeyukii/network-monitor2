@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse
 from database import init_db, get_settings, cleanup_old_data
 from poller import poll_ping, poll_snmp, poll_ports
 from scheduler import scheduler, reschedule
-from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports, importexport, networkmap
+from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports, importexport, networkmap, traps
+from trap_receiver import trap_receiver
 from apscheduler.triggers.interval import IntervalTrigger
 
 logging.basicConfig(
@@ -66,7 +67,15 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     logger.info("Scheduler started")
+
+    # SNMP トラップ受信器
+    cfg = get_settings()
+    if str(cfg.get("trap_enabled", "0")) == "1":
+        trap_receiver.start(int(cfg.get("trap_port", 1620)))
+
     yield
+
+    trap_receiver.stop()
     scheduler.shutdown()
     logger.info("Scheduler stopped")
 
@@ -82,6 +91,18 @@ app.include_router(ports.router)
 app.include_router(reports.router)
 app.include_router(importexport.router)
 app.include_router(networkmap.router)
+app.include_router(traps.router)
+
+
+@app.post("/api/settings/restart-trap", tags=["settings"])
+def restart_trap():
+    """設定変更後にトラップ受信器を再起動する。"""
+    trap_receiver.stop()
+    cfg = get_settings()
+    if str(cfg.get("trap_enabled", "0")) == "1":
+        trap_receiver.start(int(cfg.get("trap_port", 1620)))
+        return {"ok": True, "running": True, "port": int(cfg.get("trap_port", 1620))}
+    return {"ok": True, "running": False}
 
 
 @app.post("/api/settings/reschedule", tags=["settings"])

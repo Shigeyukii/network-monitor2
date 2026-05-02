@@ -801,10 +801,26 @@ function renderReportTable(data) {
 // Alert panel
 // ============================================================
 
+// アラートパネルの現在タブ
+let alertPanelTab = "alerts";
+
+function switchAlertTab(tab) {
+  alertPanelTab = tab;
+  document.querySelectorAll(".alert-tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.alertTab === tab);
+  });
+  document.getElementById("alert-list").style.display = tab === "alerts" ? "" : "none";
+  document.getElementById("trap-list").style.display  = tab === "traps"  ? "" : "none";
+  document.getElementById("btn-ack-all").textContent  = "すべて既読";
+  if (tab === "traps") loadTraps();
+  else                 loadAlerts();
+}
+
 function openAlertPanel() {
   document.getElementById("alert-overlay").style.display = "block";
   document.getElementById("alert-panel").classList.add("open");
-  loadAlerts();
+  if (alertPanelTab === "traps") loadTraps();
+  else                           loadAlerts();
 }
 
 function closeAlertPanel() {
@@ -863,8 +879,13 @@ async function acknowledgeAlert(id) {
 
 async function acknowledgeAll() {
   try {
-    await api.post("/api/alerts/acknowledge-all", {});
-    await loadAlerts();
+    if (alertPanelTab === "traps") {
+      await api.post("/api/traps/acknowledge-all", {});
+      await loadTraps();
+    } else {
+      await api.post("/api/alerts/acknowledge-all", {});
+      await loadAlerts();
+    }
     await refreshAlertBadge();
     toast("すべて既読にしました");
   } catch (e) {
@@ -872,16 +893,84 @@ async function acknowledgeAll() {
   }
 }
 
+// ---- トラップ一覧 ----
+async function loadTraps() {
+  try {
+    const traps = await api.get("/api/traps?limit=100");
+    renderTrapList(traps);
+  } catch (e) {
+    toast("トラップ取得失敗: " + e.message, "error");
+  }
+}
+
+function renderTrapList(traps) {
+  const el = document.getElementById("trap-list");
+  if (traps.length === 0) {
+    el.innerHTML = `<div class="alert-empty"><div class="icon">📡</div>トラップはまだ受信していません</div>`;
+    return;
+  }
+  el.innerHTML = traps.map(t => {
+    const typeClass = t.generic_type || "";
+    const typeText  = t.generic_type || t.trap_oid || "(不明)";
+    const vbRows = (t.varbinds || []).map(vb =>
+      `<tr><td>${esc(vb.oid)}</td><td>${esc(vb.value)}</td></tr>`
+    ).join("");
+    const vbSection = vbRows
+      ? `<details class="trap-varbinds">
+           <summary>変数バインド (${t.varbinds.length} 件)</summary>
+           <table class="trap-vb-table">${vbRows}</table>
+         </details>`
+      : "";
+    return `<div class="trap-item ${t.acknowledged ? "" : "unread"}" id="trap-item-${t.id}">
+      <div class="trap-header">
+        <div style="flex:1">
+          <span class="trap-ip">${esc(t.source_ip)}</span>
+          <span class="trap-type ${typeClass}" style="margin-left:8px">${esc(typeText)}</span>
+        </div>
+        ${!t.acknowledged
+          ? `<button class="alert-ack-btn" title="既読にする" onclick="acknowledgeTrap(${t.id})">✓</button>`
+          : ""}
+      </div>
+      <div class="trap-meta">
+        ${esc(t.version)} / ${esc(t.community) || "—"}
+        ${t.uptime ? ` / 稼働時間: ${esc(t.uptime)}` : ""}
+        <span style="float:right">${fmtTime(t.timestamp)}</span>
+      </div>
+      ${t.trap_oid ? `<div style="font-family:monospace;font-size:10px;color:var(--muted)">${esc(t.trap_oid)}</div>` : ""}
+      ${vbSection}
+    </div>`;
+  }).join("");
+}
+
+async function acknowledgeTrap(id) {
+  try {
+    await api.put(`/api/traps/${id}/acknowledge`);
+    const item = document.getElementById(`trap-item-${id}`);
+    if (item) {
+      item.classList.remove("unread");
+      item.querySelector(".alert-ack-btn")?.remove();
+    }
+    await refreshAlertBadge();
+  } catch (e) {
+    toast("既読化失敗: " + e.message, "error");
+  }
+}
+
 async function refreshAlertBadge() {
   try {
-    const { count } = await api.get("/api/alerts/unread-count");
+    const [{ count: alertCount }, { count: trapCount }] = await Promise.all([
+      api.get("/api/alerts/unread-count"),
+      api.get("/api/traps/unread-count"),
+    ]);
+    const total = alertCount + trapCount;
     const badge = document.getElementById("alert-badge");
-    if (count > 0) {
-      badge.textContent = count > 99 ? "99+" : count;
-      badge.style.display = "flex";
-    } else {
-      badge.style.display = "none";
-    }
+    badge.textContent    = total > 99 ? "99+" : total;
+    badge.style.display  = total > 0 ? "flex" : "none";
+
+    // トラップタブのバッジ
+    const trapBadge = document.getElementById("trap-tab-badge");
+    trapBadge.textContent   = trapCount > 99 ? "99+" : trapCount;
+    trapBadge.style.display = trapCount > 0 ? "inline-block" : "none";
   } catch (_) {}
 }
 
@@ -903,6 +992,8 @@ async function openSettings() {
     document.getElementById("setting-slack-url").value        = s.slack_webhook_url ?? "";
     document.getElementById("setting-notify-down").checked    = s.notify_on_down !== 0;
     document.getElementById("setting-notify-recovery").checked = s.notify_on_recovery !== 0;
+    document.getElementById("setting-trap-enabled").checked   = s.trap_enabled === 1;
+    document.getElementById("setting-trap-port").value        = s.trap_port ?? 1620;
   } catch (e) {
     toast("設定取得失敗: " + e.message, "error");
   }
@@ -910,6 +1001,8 @@ async function openSettings() {
 
 async function saveSettings(e) {
   e.preventDefault();
+  const trapEnabled = document.getElementById("setting-trap-enabled").checked ? 1 : 0;
+  const trapPort    = parseInt(document.getElementById("setting-trap-port").value) || 1620;
   const body = {
     ping_interval:      parseInt(document.getElementById("setting-ping-interval").value),
     snmp_interval:      parseInt(document.getElementById("setting-snmp-interval").value),
@@ -917,10 +1010,24 @@ async function saveSettings(e) {
     slack_webhook_url:  document.getElementById("setting-slack-url").value.trim(),
     notify_on_down:     document.getElementById("setting-notify-down").checked    ? 1 : 0,
     notify_on_recovery: document.getElementById("setting-notify-recovery").checked ? 1 : 0,
+    trap_enabled:       trapEnabled,
+    trap_port:          trapPort,
   };
   try {
     await api.put("/api/settings", body);
     await api.post("/api/settings/reschedule", {});
+    const trapResult = await api.post("/api/settings/restart-trap", {});
+
+    const statusEl = document.getElementById("trap-status-msg");
+    if (trapEnabled) {
+      statusEl.style.color = trapResult.running ? "var(--green)" : "var(--red)";
+      statusEl.textContent  = trapResult.running
+        ? `✅ ポート ${trapResult.port} で待ち受け中`
+        : `❌ 起動失敗（ポート ${trapPort} — root 権限が必要な可能性があります）`;
+    } else {
+      statusEl.style.color = "var(--muted)";
+      statusEl.textContent = "停止中";
+    }
     toast("設定を保存しました");
   } catch (e) {
     toast("設定保存失敗: " + e.message, "error");
@@ -1200,6 +1307,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Alert panel
   document.getElementById("btn-alerts").addEventListener("click", openAlertPanel);
   document.getElementById("btn-ack-all").addEventListener("click", acknowledgeAll);
+  document.querySelectorAll(".alert-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchAlertTab(btn.dataset.alertTab));
+  });
 
   // Import / Export
   initImportExport();

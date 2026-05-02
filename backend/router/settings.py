@@ -8,7 +8,8 @@ from database import get_conn
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # 数値として扱うキー（それ以外は文字列）
-_NUMERIC = {"ping_interval", "snmp_interval", "notify_on_down", "notify_on_recovery"}
+_NUMERIC = {"ping_interval", "snmp_interval", "notify_on_down", "notify_on_recovery",
+            "trap_enabled", "trap_port"}
 
 
 def _cast(key: str, value: str):
@@ -24,6 +25,8 @@ class SettingsIn(BaseModel):
     slack_webhook_url:  Optional[str] = None
     notify_on_down:     Optional[int] = None
     notify_on_recovery: Optional[int] = None
+    trap_enabled:       Optional[int] = None
+    trap_port:          Optional[int] = None
 
 
 @router.get("")

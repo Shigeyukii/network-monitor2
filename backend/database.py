@@ -114,6 +114,22 @@ def init_db():
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS traps (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            source_ip    TEXT    NOT NULL,
+            community    TEXT    NOT NULL DEFAULT '',
+            version      TEXT    NOT NULL DEFAULT '',
+            trap_oid     TEXT    NOT NULL DEFAULT '',
+            generic_type TEXT    NOT NULL DEFAULT '',
+            uptime       TEXT    NOT NULL DEFAULT '',
+            varbinds     TEXT    NOT NULL DEFAULT '[]',
+            acknowledged INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_traps_ack_time
+            ON traps(acknowledged, timestamp DESC);
+
         CREATE TABLE IF NOT EXISTS map_edges (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             source_id INTEGER NOT NULL,
@@ -135,6 +151,8 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value) VALUES ('slack_webhook_url',  '');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_down',     '1');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_recovery', '1');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_enabled',       '0');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_port',          '1620');
     """)
     conn.commit()
 

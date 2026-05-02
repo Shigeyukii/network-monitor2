@@ -298,6 +298,35 @@
             </div>
           </div>
 
+          <div class="panel" style="margin-bottom:20px">
+            <h3>SNMP トラップ受信</h3>
+
+            <div class="form-group">
+              <div class="toggle-group">
+                <label class="toggle">
+                  <input type="checkbox" id="setting-trap-enabled">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span>トラップ受信を有効にする</span>
+              </div>
+              <div class="hint">
+                有効にするとバックグラウンドで UDP ポートを待ち受けます。
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>待ち受けポート番号</label>
+              <input type="number" id="setting-trap-port" min="1" max="65535" value="1620" style="width:140px">
+              <div class="hint">
+                標準は 162 番ですが root 権限が必要です。<br>
+                権限なしで動作させる場合は <strong>1620</strong> など 1024 以上を推奨します。<br>
+                機器側で送信先ポートを合わせてください。
+              </div>
+            </div>
+
+            <div id="trap-status-msg" style="font-size:12px;margin-top:4px"></div>
+          </div>
+
           <div style="display:flex;gap:8px">
             <button type="submit" class="btn btn-primary">保存して適用</button>
             <button type="button" class="btn" id="btn-settings-back">← 一覧へ戻る</button>
@@ -460,13 +489,19 @@
 <div id="alert-overlay" class="alert-overlay" style="display:none" onclick="closeAlertPanel()"></div>
 <div id="alert-panel" class="alert-panel">
   <div class="alert-panel-header">
-    <span>🔔 アラート</span>
+    <span>🔔 通知</span>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn btn-sm" id="btn-ack-all">すべて既読</button>
       <button class="btn btn-sm" onclick="closeAlertPanel()">✕</button>
     </div>
   </div>
-  <div id="alert-list" class="alert-list"></div>
+  <!-- タブ -->
+  <div class="alert-tabs">
+    <button class="alert-tab active" data-alert-tab="alerts">死活アラート</button>
+    <button class="alert-tab" data-alert-tab="traps">SNMPトラップ <span id="trap-tab-badge" style="display:none" class="alert-tab-badge"></span></button>
+  </div>
+  <div id="alert-list"  class="alert-list"></div>
+  <div id="trap-list"   class="alert-list" style="display:none"></div>
 </div>
 
 <!-- Toast container -->
