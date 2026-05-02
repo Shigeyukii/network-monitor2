@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from database import init_db, get_settings, cleanup_old_data
 from poller import poll_ping, poll_snmp, poll_ports
 from scheduler import scheduler, reschedule
-from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports
+from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports, importexport
 from apscheduler.triggers.interval import IntervalTrigger
 
 logging.basicConfig(
@@ -80,6 +80,7 @@ app.include_router(settings_router.router)
 app.include_router(alerts.router)
 app.include_router(ports.router)
 app.include_router(reports.router)
+app.include_router(importexport.router)
 
 
 @app.post("/api/settings/reschedule", tags=["settings"])

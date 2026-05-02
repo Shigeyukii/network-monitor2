@@ -869,6 +869,46 @@ async function saveSettings(e) {
   }
 }
 
+// ============================================================
+// Import / Export
+// ============================================================
+
+function initImportExport() {
+  document.getElementById("import-file-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const resultEl = document.getElementById("import-result");
+    resultEl.style.display = "";
+    resultEl.style.color   = "var(--muted)";
+    resultEl.textContent   = "読み込み中...";
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = await api.post("/api/import", data);
+
+      resultEl.style.color = "var(--green)";
+      resultEl.innerHTML =
+        `✅ インポート完了<br>` +
+        `グループ: ${result.groups_created} 件追加 / ${result.groups_skipped} 件スキップ<br>` +
+        `デバイス: ${result.devices_created} 件追加 / ${result.devices_skipped} 件スキップ<br>` +
+        `ポート設定: ${result.ports_created} 件追加`;
+
+      // ダッシュボードのデバイス一覧を更新
+      await loadDashboard();
+      toast(`デバイス ${result.devices_created} 件をインポートしました`);
+    } catch (e) {
+      resultEl.style.color = "var(--red)";
+      resultEl.textContent = "❌ インポート失敗: " + e.message;
+      toast("インポート失敗: " + e.message, "error");
+    }
+
+    // ファイル選択をリセット（同じファイルを再選択できるよう）
+    e.target.value = "";
+  });
+}
+
 async function testNotify(target) {
   const url = document.getElementById(
     target === "teams" ? "setting-teams-url" : "setting-slack-url"
@@ -970,6 +1010,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Alert panel
   document.getElementById("btn-alerts").addEventListener("click", openAlertPanel);
   document.getElementById("btn-ack-all").addEventListener("click", acknowledgeAll);
+
+  // Import / Export
+  initImportExport();
 
   // Initial load
   showView("dashboard");

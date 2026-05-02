@@ -262,6 +262,45 @@
             <button type="button" class="btn" id="btn-settings-back">← 一覧へ戻る</button>
           </div>
         </form>
+
+        <!-- インポート・エクスポート（form の外） -->
+        <div class="panel" style="margin-top:20px">
+          <h3>デバイス設定のバックアップ・復元</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+            デバイス・グループ・ポート設定を JSON ファイルで保存・読み込みできます。<br>
+            アプリのバージョンアップ時や別端末への移行時にご利用ください。
+          </p>
+
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+
+            <!-- エクスポート -->
+            <div style="flex:1;min-width:200px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">エクスポート</div>
+              <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+                現在登録されている全デバイス情報を JSON ファイルとして保存します。
+              </p>
+              <a href="/api/export" download class="btn btn-primary btn-sm">⬇ JSON をダウンロード</a>
+            </div>
+
+            <div style="width:1px;background:var(--border);align-self:stretch"></div>
+
+            <!-- インポート -->
+            <div style="flex:1;min-width:200px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">インポート</div>
+              <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+                JSON ファイルからデバイス情報を一括登録します。<br>
+                同じ IP アドレスのデバイスは追加をスキップします。
+              </p>
+              <label class="btn btn-sm" style="cursor:pointer">
+                ⬆ JSON を読み込む
+                <input type="file" id="import-file-input" accept=".json" style="display:none">
+              </label>
+              <div id="import-result" style="margin-top:10px;font-size:12px;display:none"></div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
     </div>
 
