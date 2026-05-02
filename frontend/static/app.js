@@ -70,7 +70,8 @@ function statusText(ping) {
 // App state
 // ============================================================
 const state = {
-  view: "dashboard",      // "dashboard" | "detail" | "settings"
+  view: "dashboard",      // "dashboard" | "detail" | "settings" | "report"
+  dashTab: "list",        // "list" | "map"
   devices: [],
   groups: [],
   summary: {},
@@ -85,6 +86,63 @@ function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById(`view-${name}`).classList.add("active");
   state.view = name;
+  // マップ以外のビューに移動したときはマップアニメーションを止める
+  if (name !== "dashboard") NetworkMap.stopAnimation();
+}
+
+// ============================================================
+// Dashboard tab switching
+// ============================================================
+function switchDashTab(tab) {
+  state.dashTab = tab;
+  const listPane = document.getElementById("dash-list-pane");
+  const mapPane  = document.getElementById("dash-map-pane");
+  const view     = document.getElementById("view-dashboard");
+
+  document.querySelectorAll(".dash-tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === tab);
+  });
+
+  if (tab === "map") {
+    listPane.style.display = "none";
+    mapPane.style.display  = "";
+    view.classList.add("map-mode");
+
+    // 小画面では初期状態でパネルを閉じる
+    if (!mapState.initialized || window.innerWidth <= 900) {
+      toggleMapPanel(window.innerWidth > 900);
+    }
+
+    if (!mapState.initialized) {
+      NetworkMap.init(document.getElementById("map-canvas"), {
+        onNodeClick:      (id) => openDetail(id),
+        onPositionSave:   (id, x, y) => api.put(`/api/map/nodes/${id}`, { x, y }).catch(() => {}),
+        onEdgeCreate:     async (srcId, tgtId) => {
+          try {
+            await api.post("/api/map/edges", { source_id: srcId, target_id: tgtId });
+            await reloadMapData();
+            toast("接続を追加しました");
+          } catch (e) {
+            toast("接続失敗: " + e.message, "error");
+          }
+          setMapEdgeMode(false);
+        },
+        onEdgeModeChange: (startNode) => {
+          document.getElementById("map-edge-hint").style.display = startNode ? "" : "none";
+        },
+      });
+      mapState.initialized = true;
+    }
+
+    reloadMapData();
+    NetworkMap.startAnimation();
+  } else {
+    mapPane.style.display  = "none";
+    listPane.style.display = "";
+    view.classList.remove("map-mode");
+    NetworkMap.stopAnimation();
+    setMapEdgeMode(false);
+  }
 }
 
 // ============================================================
@@ -881,56 +939,10 @@ const mapState = {
 };
 
 function toggleMapPanel(open) {
-  // open が未指定なら現在状態を反転
   if (typeof open !== "boolean") open = !mapState.panelOpen;
   mapState.panelOpen = open;
   document.getElementById("map-panel").classList.toggle("hidden", !open);
-  // 小画面でパネルが開いているとき map-body に panel-open クラスを付与
   document.querySelector(".map-body").classList.toggle("panel-open", open && window.innerWidth <= 900);
-}
-
-async function openMapView() {
-  showView("map");
-
-  // 小画面では初期状態でパネルを閉じておく
-  if (window.innerWidth <= 900) {
-    mapState.panelOpen = false;
-    document.getElementById("map-panel").classList.add("hidden");
-  } else {
-    mapState.panelOpen = true;
-    document.getElementById("map-panel").classList.remove("hidden");
-  }
-
-  if (!mapState.initialized) {
-    NetworkMap.init(document.getElementById("map-canvas"), {
-      onNodeClick:      (id) => openDetail(id),
-      onPositionSave:   (id, x, y) => api.put(`/api/map/nodes/${id}`, { x, y }).catch(() => {}),
-      onEdgeCreate:     async (srcId, tgtId) => {
-        try {
-          await api.post("/api/map/edges", { source_id: srcId, target_id: tgtId });
-          await reloadMapData();
-          toast("接続を追加しました");
-        } catch (e) {
-          toast("接続失敗: " + e.message, "error");
-        }
-        setMapEdgeMode(false);
-      },
-      onEdgeModeChange: (startNode) => {
-        document.getElementById("map-edge-hint").style.display = startNode ? "" : "none";
-      },
-    });
-    mapState.initialized = true;
-  }
-
-  await reloadMapData();
-  NetworkMap.startAnimation();
-}
-
-function closeMapView() {
-  NetworkMap.stopAnimation();
-  setMapEdgeMode(false);
-  showView("dashboard");
-  loadDashboard();
 }
 
 async function reloadMapData() {
@@ -1118,6 +1130,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("nav-home").addEventListener("click", () => {
     clearInterval(state.detailTimer);
     showView("dashboard");
+    // マップタブが開いていればアニメーションを再開
+    if (state.dashTab === "map") NetworkMap.startAnimation();
     loadDashboard();
   });
   document.getElementById("btn-add-device").addEventListener("click", openAddDevice);
@@ -1129,9 +1143,12 @@ document.addEventListener("DOMContentLoaded", () => {
     loadDashboard();
   });
 
-  // Network Map
-  document.getElementById("btn-map").addEventListener("click", openMapView);
-  document.getElementById("btn-map-back").addEventListener("click", closeMapView);
+  // Dashboard tabs
+  document.querySelectorAll(".dash-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchDashTab(btn.dataset.tab));
+  });
+
+  // Network Map controls (inside dashboard map pane)
   document.getElementById("btn-map-refresh").addEventListener("click", reloadMapData);
   document.getElementById("btn-map-edge-mode").addEventListener("click", () => {
     setMapEdgeMode(!mapState.edgeMode);
@@ -1171,6 +1188,7 @@ document.addEventListener("DOMContentLoaded", () => {
     clearInterval(state.detailTimer);
     destroyCharts();
     showView("dashboard");
+    if (state.dashTab === "map") NetworkMap.startAnimation();
     loadDashboard();
   });
 
