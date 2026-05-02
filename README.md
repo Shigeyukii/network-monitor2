@@ -1,22 +1,47 @@
 # Network Monitor
 
 Webブラウザで確認できるネットワーク監視アプリケーションです。  
-Ping による死活監視と SNMP によるトラフィック監視をグラフで可視化します。
+Ping による死活監視・SNMP トラフィック監視・TCP ポート監視をグラフで可視化し、障害発生時には Teams / Slack へ自動通知します。
 
 ---
 
-## 機能
+## 機能一覧
+
+### 監視
 
 | 機能 | 説明 |
 |---|---|
 | Ping 死活監視 | 定期的に Ping を送信し、UP / DOWN をリアルタイム表示 |
-| SNMP トラフィック監視 | インターフェースごとの送受信トラフィックをグラフ表示 |
+| TCP ポート監視 | 任意のポートへ TCP 接続チェック（HTTP・SSH など複数登録可） |
+| SNMP トラフィック監視 | インターフェースごとの送受信トラフィックをグラフ表示（v1 / v2c） |
+
+### アラート・通知
+
+| 機能 | 説明 |
+|---|---|
+| アラート検知 | UP→DOWN / DOWN→UP の状態遷移時のみアラートを生成 |
+| アラートパネル | ベルアイコンに未読バッジ表示・右スライドパネルで確認・既読化 |
+| Teams 通知 | 障害・復旧を Microsoft Teams チャンネルへ Webhook 送信 |
+| Slack 通知 | 障害・復旧を Slack チャンネルへ Webhook 送信 |
+| 通知タイミング設定 | DOWN 検知時・復旧時をそれぞれ ON/OFF で切替可 |
+
+### ダッシュボード・表示
+
+| 機能 | 説明 |
+|---|---|
 | ダッシュボード | 全デバイスの稼働状況を一覧表示（30 秒自動更新） |
-| 詳細ビュー | Ping 応答時間グラフ・稼働率バー・トラフィックグラフ |
+| デバイスグループ | グループを作成してデバイスを分類・フィルター表示 |
+| 詳細ビュー | Ping 応答時間グラフ・稼働率バー・ポート状態・トラフィックグラフ |
 | 期間フィルター | 1 時間 / 6 時間 / 24 時間 / 3 日 / 7 日 |
+| 稼働率レポート | 1 時間 / 24 時間 / 7 日 / 30 日の稼働率を一覧表示・CSV エクスポート |
+
+### 管理
+
+| 機能 | 説明 |
+|---|---|
 | デバイス管理 | デバイスの追加・編集・削除 |
 | 監視間隔変更 | Ping・SNMP の間隔を Web 画面から変更・即時反映 |
-| 自動データクリーンアップ | Ping 結果: 7 日間 / SNMP トラフィック: 30 日間保持 |
+| 自動データクリーンアップ | Ping / ポート結果: 7 日間 / SNMP トラフィック: 30 日間保持 |
 
 ---
 
@@ -33,22 +58,27 @@ Ping による死活監視と SNMP によるトラフィック監視をグラフ
 ```
 network-monitor2/
 ├── backend/
-│   ├── main.py          # FastAPI アプリ・スケジューラー起動
-│   ├── database.py      # SQLite 初期化・接続管理
-│   ├── poller.py        # Ping / SNMP ポーリング実装
-│   ├── scheduler.py     # APScheduler ラッパー
+│   ├── main.py            # FastAPI アプリ・スケジューラー起動
+│   ├── database.py        # SQLite 初期化・接続管理
+│   ├── poller.py          # Ping / TCP ポート / SNMP ポーリング実装
+│   ├── notifier.py        # Teams / Slack Webhook 通知
+│   ├── scheduler.py       # APScheduler ラッパー
 │   └── router/
-│       ├── devices.py   # デバイス CRUD API
-│       ├── metrics.py   # メトリクス取得 API
-│       └── settings.py  # 監視設定 API
+│       ├── devices.py     # デバイス CRUD API
+│       ├── groups.py      # グループ CRUD API
+│       ├── ports.py       # TCP ポート監視 API
+│       ├── metrics.py     # メトリクス取得 API
+│       ├── alerts.py      # アラート API
+│       ├── reports.py     # 稼働率レポート API
+│       └── settings.py    # 監視設定 API
 ├── frontend/
-│   ├── index.html       # SPA（シングルページアプリ）
+│   ├── index.html         # SPA（シングルページアプリ）
 │   └── static/
-│       ├── app.js       # フロントエンドロジック
-│       └── style.css    # スタイルシート
+│       ├── app.js         # フロントエンドロジック
+│       └── style.css      # スタイルシート
 ├── data/
-│   └── monitor.db       # SQLite データベース（自動生成）
-└── requirements.txt     # Python 依存パッケージ
+│   └── monitor.db         # SQLite データベース（自動生成）
+└── requirements.txt       # Python 依存パッケージ
 ```
 
 ---
@@ -120,29 +150,64 @@ http://<サーバーの IP アドレス>:8000
 |---|---|
 | デバイス名 | 任意の識別名（例: Core-Switch-01） |
 | IP アドレス | 監視対象の IP アドレス |
+| グループ | 所属グループ（任意） |
 | Ping 間隔（秒） | このデバイスの Ping 間隔（デフォルト: 60 秒） |
 | SNMP を有効にする | SNMP 対応機器の場合はオン |
 | コミュニティ文字列 | SNMP コミュニティ名（デフォルト: public） |
 | ポート | SNMP ポート番号（デフォルト: 161） |
 | SNMP バージョン | v2c（推奨）または v1 |
 
+### グループ管理
+
+1. 画面右上の **「🗂 グループ管理」** をクリック
+2. グループ名とカラーを選んで **「追加」**
+3. ダッシュボードのタブでグループ別にフィルター表示できます
+
+### TCP ポート監視の追加
+
+1. デバイスカードをクリックして詳細ビューを開く
+2. **「TCP ポート監視」** セクションでポート番号・ラベルを入力して **「追加」**
+3. 次のポーリングから状態（OPEN / CLOSED）が表示されます
+
+### アラートの確認
+
+- 障害発生・復旧時にヘッダーのベルアイコン🔔に未読バッジが表示されます
+- クリックするとアラートパネルが開き、履歴を確認・既読化できます
+
+### 稼働率レポート
+
+1. 画面右上の **「📊 レポート」** をクリック
+2. 全デバイスの 1 時間 / 24 時間 / 7 日 / 30 日の稼働率を確認できます
+3. **「⬇ CSV ダウンロード」** で Excel 用のファイルを取得できます
+
+### 通知設定（Teams / Slack）
+
+1. **「⚙ 設定」** をクリック
+2. Teams または Slack の Webhook URL を入力
+3. **「テスト送信」** で疎通確認
+4. **「保存して適用」** で反映
+
+#### Webhook URL の取得方法
+
+**Microsoft Teams:**
+1. 通知先チャンネルを右クリック → コネクタ
+2. **Incoming Webhook** を追加 → 名前を入力 → URL をコピー
+
+**Slack:**
+1. [api.slack.com/apps](https://api.slack.com/apps) でアプリを作成
+2. **Incoming Webhooks** を有効化 → チャンネルを選択 → URL をコピー
+
 ### 監視間隔の変更
 
-1. 画面右上の **「⚙ 設定」** をクリック
+1. **「⚙ 設定」** をクリック
 2. Ping 間隔・SNMP 間隔（秒）を入力
 3. **「保存して適用」** をクリック（即時反映）
-
-### 詳細ビュー
-
-デバイスカードをクリックすると詳細ビューが開きます。
-
-- **稼働率バー**: 選択期間の UP / DOWN の割合を視覚化
-- **Ping 応答時間グラフ**: 時系列での RTT と UP / DOWN 状態
-- **トラフィックグラフ**: インターフェースごとの送受信 bps（SNMP 有効時）
 
 ---
 
 ## API エンドポイント
+
+### デバイス
 
 | メソッド | パス | 説明 |
 |---|---|---|
@@ -150,12 +215,57 @@ http://<サーバーの IP アドレス>:8000
 | POST | `/api/devices` | デバイス追加 |
 | PUT | `/api/devices/{id}` | デバイス更新 |
 | DELETE | `/api/devices/{id}` | デバイス削除 |
+
+### グループ
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/groups` | グループ一覧取得 |
+| POST | `/api/groups` | グループ追加 |
+| PUT | `/api/groups/{id}` | グループ更新 |
+| DELETE | `/api/groups/{id}` | グループ削除 |
+
+### TCP ポート監視
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/devices/{id}/ports` | ポート一覧取得 |
+| POST | `/api/devices/{id}/ports` | ポート追加 |
+| DELETE | `/api/devices/{id}/ports/{port}` | ポート削除 |
+| GET | `/api/devices/{id}/ports/history` | ポート結果履歴 |
+
+### メトリクス
+
+| メソッド | パス | 説明 |
+|---|---|---|
 | GET | `/api/metrics/ping/{id}` | Ping 履歴取得 |
 | GET | `/api/metrics/traffic/{id}` | トラフィックデータ取得 |
 | GET | `/api/metrics/summary` | ダッシュボード集計 |
+
+### アラート
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/alerts` | アラート一覧取得 |
+| GET | `/api/alerts/unread-count` | 未読件数取得 |
+| PUT | `/api/alerts/{id}/acknowledge` | 1 件既読化 |
+| POST | `/api/alerts/acknowledge-all` | 全件既読化 |
+
+### レポート
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| GET | `/api/reports/uptime` | 稼働率レポート取得 |
+| GET | `/api/reports/uptime/csv` | 稼働率 CSV ダウンロード |
+
+### 設定
+
+| メソッド | パス | 説明 |
+|---|---|---|
 | GET | `/api/settings` | 監視設定取得 |
 | PUT | `/api/settings` | 監視設定更新 |
 | POST | `/api/settings/reschedule` | スケジューラー再設定 |
+| POST | `/api/settings/test-notify` | Webhook テスト送信 |
 
 インタラクティブな API ドキュメントは起動後に以下で確認できます。
 
@@ -186,6 +296,7 @@ rsync -av --exclude='venv/' network-monitor2/ user@new-host:~/network-monitor2/
 | 用途 | プロトコル / ポート |
 |---|---|
 | Ping 死活監視 | ICMP（監視対象機器へ） |
+| TCP ポート監視 | TCP 任意ポート（監視対象機器へ） |
 | SNMP トラフィック監視 | UDP 161（監視対象機器へ） |
 | Web UI アクセス | TCP 8000（監視サーバー側） |
 
@@ -199,9 +310,13 @@ SQLite を使用しており、追加のデータベースサーバーは不要�
 | テーブル | 内容 | 保持期間 |
 |---|---|---|
 | devices | 登録デバイス情報 | 無期限 |
+| groups | デバイスグループ情報 | 無期限 |
 | ping_results | Ping 結果履歴 | 7 日間 |
+| port_checks | TCP ポート監視設定 | 無期限 |
+| port_results | TCP ポート結果履歴 | 7 日間 |
 | snmp_interfaces | インターフェース情報 | 無期限 |
 | snmp_traffic | トラフィック履歴 | 30 日間 |
+| alerts | アラート履歴 | 無期限 |
 | settings | 監視設定 | 無期限 |
 
 ---
@@ -214,5 +329,6 @@ SQLite を使用しており、追加のデータベースサーバーは不要�
 | データベース | SQLite |
 | SNMP ライブラリ | puresnmp |
 | スケジューラー | APScheduler |
+| 通知 | urllib（標準ライブラリ）で Webhook POST |
 | フロントエンド | Vanilla JS + Chart.js |
 | グラフ | Chart.js 4.x + chartjs-adapter-date-fns |
