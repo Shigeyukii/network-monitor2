@@ -149,6 +149,50 @@
             </div>
           </div>
 
+          <div class="panel" style="margin-bottom:20px">
+            <h3>通知設定</h3>
+
+            <div class="form-group">
+              <label>Microsoft Teams Webhook URL</label>
+              <div style="display:flex;gap:8px">
+                <input type="url" id="setting-teams-url" placeholder="https://outlook.office.com/webhook/..." style="flex:1">
+                <button type="button" class="btn btn-sm" onclick="testNotify('teams')">テスト送信</button>
+              </div>
+              <div class="hint">Teams チャンネルの Incoming Webhook URL を貼り付けてください</div>
+            </div>
+
+            <div class="form-group">
+              <label>Slack Webhook URL</label>
+              <div style="display:flex;gap:8px">
+                <input type="url" id="setting-slack-url" placeholder="https://hooks.slack.com/services/..." style="flex:1">
+                <button type="button" class="btn btn-sm" onclick="testNotify('slack')">テスト送信</button>
+              </div>
+              <div class="hint">Slack の Incoming Webhook URL を貼り付けてください</div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>通知するタイミング</label>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+                  <div class="toggle-group">
+                    <label class="toggle">
+                      <input type="checkbox" id="setting-notify-down" checked>
+                      <span class="toggle-slider"></span>
+                    </label>
+                    <span>障害検知時 (DOWN)</span>
+                  </div>
+                  <div class="toggle-group">
+                    <label class="toggle">
+                      <input type="checkbox" id="setting-notify-recovery" checked>
+                      <span class="toggle-slider"></span>
+                    </label>
+                    <span>復旧時 (UP)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div style="display:flex;gap:8px">
             <button type="submit" class="btn btn-primary">保存して適用</button>
             <button type="button" class="btn" id="btn-settings-back">← 一覧へ戻る</button>

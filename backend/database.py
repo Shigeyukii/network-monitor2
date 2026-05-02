@@ -89,8 +89,12 @@ def init_db():
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('ping_interval', '60');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_interval', '60');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('ping_interval',      '60');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_interval',      '60');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('teams_webhook_url',  '');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('slack_webhook_url',  '');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_down',     '1');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_recovery', '1');
     """)
     conn.commit()
 

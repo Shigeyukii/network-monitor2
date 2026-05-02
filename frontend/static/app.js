@@ -727,8 +727,12 @@ async function openSettings() {
   showView("settings");
   try {
     const s = await api.get("/api/settings");
-    document.getElementById("setting-ping-interval").value = s.ping_interval ?? 60;
-    document.getElementById("setting-snmp-interval").value = s.snmp_interval ?? 60;
+    document.getElementById("setting-ping-interval").value    = s.ping_interval ?? 60;
+    document.getElementById("setting-snmp-interval").value    = s.snmp_interval ?? 60;
+    document.getElementById("setting-teams-url").value        = s.teams_webhook_url ?? "";
+    document.getElementById("setting-slack-url").value        = s.slack_webhook_url ?? "";
+    document.getElementById("setting-notify-down").checked    = s.notify_on_down !== 0;
+    document.getElementById("setting-notify-recovery").checked = s.notify_on_recovery !== 0;
   } catch (e) {
     toast("設定取得失敗: " + e.message, "error");
   }
@@ -737,15 +741,39 @@ async function openSettings() {
 async function saveSettings(e) {
   e.preventDefault();
   const body = {
-    ping_interval: parseInt(document.getElementById("setting-ping-interval").value),
-    snmp_interval: parseInt(document.getElementById("setting-snmp-interval").value),
+    ping_interval:      parseInt(document.getElementById("setting-ping-interval").value),
+    snmp_interval:      parseInt(document.getElementById("setting-snmp-interval").value),
+    teams_webhook_url:  document.getElementById("setting-teams-url").value.trim(),
+    slack_webhook_url:  document.getElementById("setting-slack-url").value.trim(),
+    notify_on_down:     document.getElementById("setting-notify-down").checked    ? 1 : 0,
+    notify_on_recovery: document.getElementById("setting-notify-recovery").checked ? 1 : 0,
   };
   try {
     await api.put("/api/settings", body);
     await api.post("/api/settings/reschedule", {});
-    toast("設定を保存し、スケジュールを更新しました");
+    toast("設定を保存しました");
   } catch (e) {
     toast("設定保存失敗: " + e.message, "error");
+  }
+}
+
+async function testNotify(target) {
+  const url = document.getElementById(
+    target === "teams" ? "setting-teams-url" : "setting-slack-url"
+  ).value.trim();
+  if (!url) {
+    toast("URL を入力してください", "error");
+    return;
+  }
+  try {
+    const result = await api.post("/api/settings/test-notify", { target, url });
+    if (result.ok) {
+      toast(`${target === "teams" ? "Teams" : "Slack"} へテスト送信しました`);
+    } else {
+      toast(`送信失敗: ${result.detail || "不明なエラー"}`, "error");
+    }
+  } catch (e) {
+    toast("テスト送信失敗: " + e.message, "error");
   }
 }
 

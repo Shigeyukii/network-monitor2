@@ -16,7 +16,7 @@ except ImportError:
     SNMP_AVAILABLE = False
     logger.warning("puresnmp not available — SNMP polling disabled")
 
-from database import get_conn
+from database import get_conn, get_settings
 
 
 # ---------------------------------------------------------------------------
@@ -57,19 +57,25 @@ def poll_ping(device_id: int, ip: str):
         (device_id,),
     ).fetchone()
 
+    alert_type = None
     if prev is not None:
         if prev["status"] == 1 and not status:
-            conn.execute(
-                "INSERT INTO alerts (device_id, type) VALUES (?, 'down')",
-                (device_id,),
-            )
-            logger.warning("ALERT DOWN: device_id=%d ip=%s", device_id, ip)
+            alert_type = "down"
         elif prev["status"] == 0 and status:
-            conn.execute(
-                "INSERT INTO alerts (device_id, type) VALUES (?, 'recovery')",
-                (device_id,),
-            )
-            logger.info("ALERT RECOVERY: device_id=%d ip=%s", device_id, ip)
+            alert_type = "recovery"
+
+    if alert_type:
+        conn.execute(
+            "INSERT INTO alerts (device_id, type) VALUES (?, ?)",
+            (device_id, alert_type),
+        )
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        device_row = conn.execute(
+            "SELECT name FROM devices WHERE id=?", (device_id,)
+        ).fetchone()
+        device_name = device_row["name"] if device_row else str(device_id)
+        logger.warning("ALERT %s: %s (%s)", alert_type.upper(), device_name, ip)
 
     conn.execute(
         "INSERT INTO ping_results (device_id, status, response_time) VALUES (?, ?, ?)",
@@ -79,6 +85,13 @@ def poll_ping(device_id: int, ip: str):
     conn.close()
     logger.info("ping %s → %s  %s", ip, "UP" if status else "DOWN",
                 f"{rtt:.1f}ms" if rtt is not None else "timeout")
+
+    if alert_type:
+        try:
+            from notifier import notify
+            notify(device_name, ip, alert_type, timestamp, get_settings())
+        except Exception as e:
+            logger.error("notify error: %s", e)
 
 
 # ---------------------------------------------------------------------------
