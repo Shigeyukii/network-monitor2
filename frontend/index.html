@@ -18,6 +18,10 @@
     <button class="btn" id="btn-manage-groups">🗂 グループ管理</button>
     <button class="btn btn-primary" id="btn-add-device">＋ デバイス追加</button>
     <button class="btn" id="btn-settings">⚙ 設定</button>
+    <button class="btn btn-bell" id="btn-alerts" title="アラート">
+      🔔
+      <span id="alert-badge" class="alert-badge" style="display:none">0</span>
+    </button>
   </header>
 
   <main>
@@ -260,6 +264,21 @@
       <button class="btn" id="group-modal-close">閉じる</button>
     </div>
   </div>
+</div>
+
+<!-- ============================================================
+     Alert panel (slide-in from right)
+     ============================================================ -->
+<div id="alert-overlay" class="alert-overlay" style="display:none" onclick="closeAlertPanel()"></div>
+<div id="alert-panel" class="alert-panel">
+  <div class="alert-panel-header">
+    <span>🔔 アラート</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-sm" id="btn-ack-all">すべて既読</button>
+      <button class="btn btn-sm" onclick="closeAlertPanel()">✕</button>
+    </div>
+  </div>
+  <div id="alert-list" class="alert-list"></div>
 </div>
 
 <!-- Toast container -->

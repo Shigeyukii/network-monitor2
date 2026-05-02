@@ -628,6 +628,99 @@ async function reloadGroups() {
 }
 
 // ============================================================
+// Alert panel
+// ============================================================
+
+function openAlertPanel() {
+  document.getElementById("alert-overlay").style.display = "block";
+  document.getElementById("alert-panel").classList.add("open");
+  loadAlerts();
+}
+
+function closeAlertPanel() {
+  document.getElementById("alert-overlay").style.display = "none";
+  document.getElementById("alert-panel").classList.remove("open");
+}
+
+async function loadAlerts() {
+  try {
+    const alerts = await api.get("/api/alerts?limit=100");
+    renderAlertList(alerts);
+  } catch (e) {
+    toast("アラート取得失敗: " + e.message, "error");
+  }
+}
+
+function renderAlertList(alerts) {
+  const el = document.getElementById("alert-list");
+  if (alerts.length === 0) {
+    el.innerHTML = `<div class="alert-empty"><div class="icon">🔕</div>アラートはありません</div>`;
+    return;
+  }
+  el.innerHTML = alerts.map(a => {
+    const isDown     = a.type === "down";
+    const icon       = isDown ? "🔴" : "🟢";
+    const msgClass   = isDown ? "down" : "recovery";
+    const msgText    = isDown ? "障害検知 (DOWN)" : "復旧 (UP)";
+    const unreadCls  = a.acknowledged ? "" : "unread";
+    return `<div class="alert-item ${unreadCls}" id="alert-item-${a.id}">
+      <span class="alert-icon">${icon}</span>
+      <div class="alert-body">
+        <div class="alert-device">${esc(a.device_name)} <span class="ip">${esc(a.device_ip_address)}</span></div>
+        <div class="alert-msg ${msgClass}">${msgText}</div>
+        <div class="alert-time">${fmtTime(a.timestamp)}</div>
+      </div>
+      ${!a.acknowledged
+        ? `<button class="alert-ack-btn" title="既読にする" onclick="acknowledgeAlert(${a.id})">✓</button>`
+        : ""}
+    </div>`;
+  }).join("");
+}
+
+async function acknowledgeAlert(id) {
+  try {
+    await api.put(`/api/alerts/${id}/acknowledge`);
+    const item = document.getElementById(`alert-item-${id}`);
+    if (item) {
+      item.classList.remove("unread");
+      item.querySelector(".alert-ack-btn")?.remove();
+    }
+    await refreshAlertBadge();
+  } catch (e) {
+    toast("既読化失敗: " + e.message, "error");
+  }
+}
+
+async function acknowledgeAll() {
+  try {
+    await api.post("/api/alerts/acknowledge-all", {});
+    await loadAlerts();
+    await refreshAlertBadge();
+    toast("すべて既読にしました");
+  } catch (e) {
+    toast("既読化失敗: " + e.message, "error");
+  }
+}
+
+async function refreshAlertBadge() {
+  try {
+    const { count } = await api.get("/api/alerts/unread-count");
+    const badge = document.getElementById("alert-badge");
+    if (count > 0) {
+      badge.textContent = count > 99 ? "99+" : count;
+      badge.style.display = "flex";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch (_) {}
+}
+
+function startAlertBadgeRefresh() {
+  refreshAlertBadge();
+  setInterval(refreshAlertBadge, 30_000);
+}
+
+// ============================================================
 // Settings view
 // ============================================================
 async function openSettings() {
@@ -726,8 +819,13 @@ document.addEventListener("DOMContentLoaded", () => {
     b.addEventListener("click", () => setDetailHours(parseInt(b.dataset.hours)));
   });
 
+  // Alert panel
+  document.getElementById("btn-alerts").addEventListener("click", openAlertPanel);
+  document.getElementById("btn-ack-all").addEventListener("click", acknowledgeAll);
+
   // Initial load
   showView("dashboard");
   loadDashboard();
   startDashboardRefresh();
+  startAlertBadgeRefresh();
 });

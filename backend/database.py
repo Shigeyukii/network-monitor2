@@ -47,6 +47,18 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ping_device_time
             ON ping_results(device_id, timestamp DESC);
 
+        CREATE TABLE IF NOT EXISTS alerts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id    INTEGER NOT NULL,
+            type         TEXT    NOT NULL,
+            timestamp    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            acknowledged INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_alerts_ack_time
+            ON alerts(acknowledged, timestamp DESC);
+
         CREATE TABLE IF NOT EXISTS snmp_interfaces (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER NOT NULL,

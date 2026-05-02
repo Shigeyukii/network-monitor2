@@ -50,6 +50,27 @@ def ping_host(ip: str, timeout: int = 2) -> tuple:
 def poll_ping(device_id: int, ip: str):
     status, rtt = ping_host(ip)
     conn = get_conn()
+
+    # 状態遷移を検知してアラートを生成
+    prev = conn.execute(
+        "SELECT status FROM ping_results WHERE device_id=? ORDER BY timestamp DESC LIMIT 1",
+        (device_id,),
+    ).fetchone()
+
+    if prev is not None:
+        if prev["status"] == 1 and not status:
+            conn.execute(
+                "INSERT INTO alerts (device_id, type) VALUES (?, 'down')",
+                (device_id,),
+            )
+            logger.warning("ALERT DOWN: device_id=%d ip=%s", device_id, ip)
+        elif prev["status"] == 0 and status:
+            conn.execute(
+                "INSERT INTO alerts (device_id, type) VALUES (?, 'recovery')",
+                (device_id,),
+            )
+            logger.info("ALERT RECOVERY: device_id=%d ip=%s", device_id, ip)
+
     conn.execute(
         "INSERT INTO ping_results (device_id, status, response_time) VALUES (?, ?, ?)",
         (device_id, 1 if status else 0, rtt),
