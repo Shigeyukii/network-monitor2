@@ -634,49 +634,99 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
 .uptime-pct.nodata { color: var(--muted); font-weight: 400; }
 
 /* ---- Network Map ---- */
+
+/*
+ * main の padding / max-width / margin を打ち消して
+ * マップを画面いっぱいに表示する
+ */
 .map-view {
   display: flex !important;
   flex-direction: column;
-  height: calc(100vh - 56px);
-  padding: 0;
-  max-width: 100%;
+  /* main の padding(24px) を相殺して全幅・全高を使う */
+  margin:  -24px;
+  width:   calc(100% + 48px);
+  height:  calc(100vh - 56px);
+  max-width: none;
 }
 
 .map-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
+  gap: 8px;
+  padding: 7px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;   /* 折り返し禁止: 折り返すとマップ領域が縮む */
+  overflow-x: auto;    /* 幅が足りないときは横スクロール */
+  overflow-y: hidden;
+  min-height: 42px;
 }
+/* スクロールバーを目立たなくする */
+.map-controls::-webkit-scrollbar { height: 3px; }
+.map-controls::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .map-body {
   flex: 1;
   display: flex;
   overflow: hidden;
   position: relative;
+  min-height: 0; /* flex 子要素が縮めるよう */
 }
 
 #map-canvas {
   flex: 1;
   display: block;
-  width: 100%;
-  height: 100%;
+  min-width: 0; /* canvas が flex container を押し広げないよう */
   cursor: default;
 }
 
+/* ---- デスクトップ: サイドパネル ---- */
 .map-panel {
   width: 220px;
-  background: rgba(13, 17, 23, 0.92);
+  background: rgba(13, 17, 23, 0.95);
   border-left: 1px solid var(--border);
   overflow-y: auto;
   flex-shrink: 0;
-  transition: width 0.2s;
+  transition: width 0.2s ease;
 }
-.map-panel.hidden { width: 0; overflow: hidden; border: none; }
+.map-panel.hidden {
+  width: 0;
+  overflow: hidden;
+  border: none;
+}
+
+/* ---- 小画面(≤ 900px): パネルをオーバーレイ引き出しに変更 ---- */
+@media (max-width: 900px) {
+  .map-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 220px !important;  /* 幅を固定して canvas を圧迫しない */
+    z-index: 20;
+    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.7);
+    border-left: 1px solid var(--border) !important;
+    overflow-y: auto !important;
+    /* 表示/非表示を transform で切り替え */
+    transform: translateX(0);
+    transition: transform 0.25s ease;
+  }
+  .map-panel.hidden {
+    width: 220px !important;
+    overflow-y: auto !important;
+    border-left: 1px solid var(--border) !important;
+    transform: translateX(100%);
+  }
+  /* パネルが開いているとき canvas を暗くする半透明オーバーレイ */
+  .map-body.panel-open::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 19;
+  }
+}
 
 .map-panel-section {
   padding: 12px;

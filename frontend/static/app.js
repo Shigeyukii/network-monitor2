@@ -880,8 +880,26 @@ const mapState = {
   panelOpen:   true,
 };
 
+function toggleMapPanel(open) {
+  // open が未指定なら現在状態を反転
+  if (typeof open !== "boolean") open = !mapState.panelOpen;
+  mapState.panelOpen = open;
+  document.getElementById("map-panel").classList.toggle("hidden", !open);
+  // 小画面でパネルが開いているとき map-body に panel-open クラスを付与
+  document.querySelector(".map-body").classList.toggle("panel-open", open && window.innerWidth <= 900);
+}
+
 async function openMapView() {
   showView("map");
+
+  // 小画面では初期状態でパネルを閉じておく
+  if (window.innerWidth <= 900) {
+    mapState.panelOpen = false;
+    document.getElementById("map-panel").classList.add("hidden");
+  } else {
+    mapState.panelOpen = true;
+    document.getElementById("map-panel").classList.remove("hidden");
+  }
 
   if (!mapState.initialized) {
     NetworkMap.init(document.getElementById("map-canvas"), {
@@ -1118,10 +1136,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-map-edge-mode").addEventListener("click", () => {
     setMapEdgeMode(!mapState.edgeMode);
   });
-  document.getElementById("btn-map-panel-toggle").addEventListener("click", () => {
-    mapState.panelOpen = !mapState.panelOpen;
-    document.getElementById("map-panel").classList.toggle("hidden", !mapState.panelOpen);
-  });
+  document.getElementById("btn-map-panel-toggle").addEventListener("click", toggleMapPanel);
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && mapState.edgeMode) setMapEdgeMode(false);
   });
