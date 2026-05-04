@@ -742,23 +742,23 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
 
 /*
  * マップタブ選択時: ダッシュボードを full-height flex column に変える
- * main の padding/max-width を打ち消して全幅を使う
+ * .active と併用することで、他ビューに移動した際に dashboard が背後に残らないようにする
  */
-#view-dashboard.map-mode {
-  display:     flex !important;
+#view-dashboard.active.map-mode {
+  display:        flex;   /* !important 不要: .active より高い specificity で上書き */
   flex-direction: column;
-  margin:      -24px;
-  width:       calc(100% + 48px);
-  max-width:   none;
-  height:      calc(100vh - 56px);
+  margin:         -24px;
+  width:          calc(100% + 48px);
+  max-width:      none;
+  height:         calc(100vh - 56px);
 }
 
 /* マップモード時: 集計カードとタブバーにだけ padding を戻す */
-#view-dashboard.map-mode .summary-strip {
+#view-dashboard.active.map-mode .summary-strip {
   padding: 12px 24px 0;
   flex-shrink: 0;
 }
-#view-dashboard.map-mode .dash-tab-bar {
+#view-dashboard.active.map-mode .dash-tab-bar {
   padding: 8px 24px 0;
   margin-bottom: 0;
   flex-shrink: 0;

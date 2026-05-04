@@ -72,6 +72,8 @@ const NetworkMap = (() => {
     dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    // ゼロサイズの場合は更新しない（非表示状態でキャンバスがリセットされるのを防ぐ）
+    if (w === 0 || h === 0) return;
     if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
       canvas.width  = w * dpr;
       canvas.height = h * dpr;

@@ -86,8 +86,13 @@ function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById(`view-${name}`).classList.add("active");
   state.view = name;
-  // マップ以外のビューに移動したときはマップアニメーションを止める
-  if (name !== "dashboard") NetworkMap.stopAnimation();
+
+  if (name !== "dashboard") {
+    NetworkMap.stopAnimation();
+  } else if (state.dashTab === "map") {
+    // ダッシュボードに戻るどのルートからでも確実にアニメーションを再開する
+    NetworkMap.startAnimation();
+  }
 }
 
 // ============================================================
@@ -1237,8 +1242,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("nav-home").addEventListener("click", () => {
     clearInterval(state.detailTimer);
     showView("dashboard");
-    // マップタブが開いていればアニメーションを再開
-    if (state.dashTab === "map") NetworkMap.startAnimation();
     loadDashboard();
   });
   document.getElementById("btn-add-device").addEventListener("click", openAddDevice);
@@ -1295,7 +1298,6 @@ document.addEventListener("DOMContentLoaded", () => {
     clearInterval(state.detailTimer);
     destroyCharts();
     showView("dashboard");
-    if (state.dashTab === "map") NetworkMap.startAnimation();
     loadDashboard();
   });
 
