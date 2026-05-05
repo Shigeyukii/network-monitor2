@@ -56,12 +56,14 @@ function fmtTime(ts) {
   return d.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function statusLabel(ping) {
+function statusLabel(ping, maintenance) {
+  if (maintenance) return "maintenance";
   if (!ping) return "unknown";
   return ping.status ? "up" : "down";
 }
 
-function statusText(ping) {
+function statusText(ping, maintenance) {
+  if (maintenance) return "🔧 メンテ中";
   if (!ping) return "不明";
   return ping.status ? "UP" : "DOWN";
 }
@@ -172,10 +174,11 @@ async function loadDashboard() {
 }
 
 function renderSummary(s) {
-  document.getElementById("sum-total").textContent   = s.total;
-  document.getElementById("sum-up").textContent      = s.up;
-  document.getElementById("sum-down").textContent    = s.down;
-  document.getElementById("sum-unknown").textContent = s.unknown;
+  document.getElementById("sum-total").textContent       = s.total;
+  document.getElementById("sum-up").textContent          = s.up;
+  document.getElementById("sum-down").textContent        = s.down;
+  document.getElementById("sum-unknown").textContent     = s.unknown;
+  document.getElementById("sum-maintenance").textContent = s.maintenance ?? 0;
 }
 
 function filteredDevices() {
@@ -228,7 +231,7 @@ function renderDeviceGrid(devices) {
     return;
   }
   grid.innerHTML = devices.map(d => {
-    const st  = statusLabel(d.latest_ping);
+    const st  = statusLabel(d.latest_ping, d.maintenance);
     const rtt = d.latest_ping ? fmtRtt(d.latest_ping.response_time) : "—";
     const ts  = d.latest_ping ? fmtTime(d.latest_ping.timestamp) : "未確認";
     const groupBadge = d.group
@@ -240,7 +243,7 @@ function renderDeviceGrid(devices) {
           <div class="device-name">${esc(d.name)}</div>
           <div class="device-ip">${esc(d.ip_address)}</div>
         </div>
-        <span class="status-badge ${st}">${statusText(d.latest_ping)}</span>
+        <span class="status-badge ${st}">${statusText(d.latest_ping, d.maintenance)}</span>
       </div>
       <div class="device-meta">
         <span class="rtt">RTT: ${rtt}</span>
@@ -300,14 +303,25 @@ async function refreshDetail() {
 }
 
 function renderDetailHeader(d) {
-  const st = statusLabel(d.latest_ping);
+  const st = statusLabel(d.latest_ping, d.maintenance);
   document.getElementById("detail-title").textContent = d.name;
   document.getElementById("detail-ip").textContent    = d.ip_address;
   const badge = document.getElementById("detail-status");
-  badge.className = `status-badge ${st}`;
-  badge.textContent = statusText(d.latest_ping);
+  badge.className   = `status-badge ${st}`;
+  badge.textContent = statusText(d.latest_ping, d.maintenance);
   document.getElementById("btn-edit-device").onclick   = () => openEditDevice(d.id);
   document.getElementById("btn-delete-device").onclick = () => confirmDelete(d.id, d.name);
+
+  // メンテナンストグルボタン
+  const maintBtn = document.getElementById("btn-toggle-maintenance");
+  if (d.maintenance) {
+    maintBtn.textContent = "✅ 監視を再開";
+    maintBtn.className   = "btn btn-sm btn-maintenance-on";
+  } else {
+    maintBtn.textContent = "🔧 メンテナンス";
+    maintBtn.className   = "btn btn-sm";
+  }
+  maintBtn.onclick = () => toggleMaintenance(d.id, !d.maintenance);
 }
 
 function renderDeviceInfo(d) {
@@ -320,6 +334,12 @@ function renderDeviceInfo(d) {
   document.getElementById("info-snmp").textContent      = d.snmp_enabled
     ? `有効 (${d.snmp_community} / ${d.snmp_version})`
     : "無効";
+  const maintEl = document.getElementById("info-maintenance");
+  if (d.maintenance) {
+    maintEl.innerHTML = `<span style="color:#8b949e">🔧 メンテナンス中（監視スキップ中）</span>`;
+  } else {
+    maintEl.innerHTML = `<span style="color:var(--green)">✅ 監視中</span>`;
+  }
 }
 
 function renderUptimeBar(pingData) {
@@ -571,6 +591,18 @@ async function submitDeviceForm(e) {
   }
 }
 
+async function toggleMaintenance(id, enable) {
+  try {
+    await api.put(`/api/devices/${id}/maintenance`, { enabled: enable });
+    const msg = enable ? "🔧 メンテナンスモードに設定しました" : "✅ 監視を再開しました";
+    toast(msg);
+    await refreshDetail();
+    await loadDashboard();
+  } catch (e) {
+    toast("切替失敗: " + e.message, "error");
+  }
+}
+
 async function confirmDelete(id, name) {
   if (!confirm(`「${name}」を削除しますか？\n関連する全データも削除されます。`)) return;
   try {
@@ -785,7 +817,7 @@ function renderReportTable(data) {
   empty.style.display = "none";
 
   tbody.innerHTML = data.map(r => {
-    const st = statusLabel(r.latest_ping);
+    const st = statusLabel(r.latest_ping, r.maintenance);
     const groupBadge = r.group
       ? `<span class="group-badge"><span class="dot" style="background:${r.group.color}"></span>${esc(r.group.name)}</span>`
       : `<span style="color:var(--muted);font-size:12px">未グループ</span>`;
@@ -793,7 +825,7 @@ function renderReportTable(data) {
       <td style="font-weight:600">${esc(r.name)}</td>
       <td style="font-family:monospace;font-size:12px">${esc(r.ip_address)}</td>
       <td>${groupBadge}</td>
-      <td><span class="status-badge ${st}">${statusText(r.latest_ping)}</span></td>
+      <td><span class="status-badge ${st}">${statusText(r.latest_ping, r.maintenance)}</span></td>
       <td>${fmtUptime(r.uptimes["1h"])}</td>
       <td>${fmtUptime(r.uptimes["24h"])}</td>
       <td>${fmtUptime(r.uptimes["7d"])}</td>

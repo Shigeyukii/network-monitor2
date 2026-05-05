@@ -91,9 +91,10 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
 }
 .summary-card .value { font-size: 28px; font-weight: 700; }
 .summary-card .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.summary-card.up   .value { color: var(--green); }
-.summary-card.down .value { color: var(--red);   }
-.summary-card.unk  .value { color: var(--orange); }
+.summary-card.up    .value { color: var(--green); }
+.summary-card.down  .value { color: var(--red);   }
+.summary-card.unk   .value { color: var(--orange); }
+.summary-card.maint .value { color: #8b949e; }
 
 /* ---- Device grid ---- */
 .device-grid {
@@ -112,9 +113,11 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
   position: relative;
 }
 .device-card:hover { border-color: var(--blue); transform: translateY(-1px); }
-.device-card.status-up   { border-left: 3px solid var(--green); }
-.device-card.status-down { border-left: 3px solid var(--red);   }
-.device-card.status-unknown { border-left: 3px solid var(--orange); }
+.device-card.status-up          { border-left: 3px solid var(--green); }
+.device-card.status-down        { border-left: 3px solid var(--red);   }
+.device-card.status-unknown     { border-left: 3px solid var(--orange); }
+.device-card.status-maintenance { border-left: 3px solid #8b949e; opacity: 0.65; }
+.device-card.status-maintenance:hover { opacity: 0.9; }
 
 .device-card .card-top {
   display: flex;
@@ -132,9 +135,17 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
   border-radius: 12px;
   white-space: nowrap;
 }
-.status-badge.up      { background: rgba(63,185,80,0.15);  color: var(--green); }
-.status-badge.down    { background: rgba(248,81,73,0.15);  color: var(--red);   }
-.status-badge.unknown { background: rgba(210,153,34,0.15); color: var(--orange); }
+.status-badge.up          { background: rgba(63,185,80,0.15);  color: var(--green); }
+.status-badge.down        { background: rgba(248,81,73,0.15);  color: var(--red);   }
+.status-badge.unknown     { background: rgba(210,153,34,0.15); color: var(--orange); }
+.status-badge.maintenance { background: rgba(139,148,158,0.15); color: #8b949e; }
+
+/* メンテナンスボタン ON 状態 */
+.btn-maintenance-on {
+  background: rgba(139,148,158,0.2);
+  border-color: #8b949e;
+  color: #8b949e;
+}
 
 .device-meta {
   display: flex;

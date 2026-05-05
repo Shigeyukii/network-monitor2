@@ -28,7 +28,9 @@ FRONTEND_DIR = os.path.join(
 
 def run_ping_polls():
     conn = __import__("database").get_conn()
-    rows = conn.execute("SELECT id, ip_address FROM devices").fetchall()
+    rows = conn.execute(
+        "SELECT id, ip_address FROM devices WHERE maintenance=0"
+    ).fetchall()
     conn.close()
     for row in rows:
         poll_ping(row["id"], row["ip_address"])
@@ -39,7 +41,7 @@ def run_snmp_polls():
     conn = __import__("database").get_conn()
     rows = conn.execute(
         "SELECT id, ip_address, snmp_community, snmp_port, snmp_version "
-        "FROM devices WHERE snmp_enabled=1"
+        "FROM devices WHERE snmp_enabled=1 AND maintenance=0"
     ).fetchall()
     conn.close()
     for row in rows:

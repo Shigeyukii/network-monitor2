@@ -156,11 +156,13 @@ def init_db():
     """)
     conn.commit()
 
-    # Migration: add group_id to devices if it doesn't exist yet (for existing DBs)
+    # Migration: add columns to devices if they don't exist yet (for existing DBs)
     existing_cols = [row[1] for row in conn.execute("PRAGMA table_info(devices)").fetchall()]
     if "group_id" not in existing_cols:
         conn.execute("ALTER TABLE devices ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL")
-        conn.commit()
+    if "maintenance" not in existing_cols:
+        conn.execute("ALTER TABLE devices ADD COLUMN maintenance INTEGER NOT NULL DEFAULT 0")
+    conn.commit()
 
     conn.close()
 

@@ -129,3 +129,19 @@ def delete_device(device_id: int):
     conn.execute("DELETE FROM devices WHERE id=?", (device_id,))
     conn.commit()
     conn.close()
+
+
+@router.put("/{device_id}/maintenance")
+def set_maintenance(device_id: int, body: dict):
+    """メンテナンスモードの ON / OFF を切り替える。"""
+    enabled = int(bool(body.get("enabled", False)))
+    conn = get_conn()
+    if not conn.execute("SELECT id FROM devices WHERE id=?", (device_id,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+    conn.execute("UPDATE devices SET maintenance=? WHERE id=?", (enabled, device_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM devices WHERE id=?", (device_id,)).fetchone()
+    result = _with_status(row, conn)
+    conn.close()
+    return result

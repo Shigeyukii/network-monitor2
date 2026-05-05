@@ -63,10 +63,13 @@ def traffic(
 @router.get("/summary")
 def summary():
     conn = get_conn()
-    devices = conn.execute("SELECT id FROM devices").fetchall()
+    devices = conn.execute("SELECT id, maintenance FROM devices").fetchall()
     total = len(devices)
-    up = down = unknown = 0
+    up = down = unknown = maintenance = 0
     for d in devices:
+        if d["maintenance"]:
+            maintenance += 1
+            continue
         row = conn.execute(
             "SELECT status FROM ping_results WHERE device_id=? ORDER BY timestamp DESC LIMIT 1",
             (d["id"],),
@@ -78,4 +81,4 @@ def summary():
         else:
             down += 1
     conn.close()
-    return {"total": total, "up": up, "down": down, "unknown": unknown}
+    return {"total": total, "up": up, "down": down, "unknown": unknown, "maintenance": maintenance}
