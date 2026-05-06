@@ -163,6 +163,16 @@ async def _walk_oid(ip: str, community: str, port: int, version: str, oid: str) 
     return result
 
 
+def _decode_str(value) -> str:
+    """puresnmp が返す bytes / str を安全に文字列へ変換する。"""
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8").strip()
+        except Exception:
+            return value.decode("latin-1", errors="replace").strip()
+    return str(value).strip() if value is not None else ""
+
+
 async def _get_interfaces_async(ip, community, port, version):
     names, speeds = await asyncio.gather(
         _walk_oid(ip, community, port, version, "1.3.6.1.2.1.2.2.1.2"),   # ifDescr
@@ -170,8 +180,9 @@ async def _get_interfaces_async(ip, community, port, version):
     )
     interfaces = {}
     for idx, name in names.items():
+        decoded = _decode_str(name)
         interfaces[idx] = {
-            "name":  str(name) if name is not None else f"if{idx}",
+            "name":  decoded if decoded else f"if{idx}",
             "speed": int(speeds.get(idx, 0) or 0),
         }
     return interfaces
