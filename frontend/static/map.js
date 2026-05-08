@@ -210,7 +210,7 @@ const NetworkMap = (() => {
   function nodeColors(n) {
     if (n.status === "down")    return { fill: "#ff6b6b", glow: "#ff2222", core: "#ffaaaa" };
     if (n.status === "up") {
-      if (n.traffic_bps > 5e6)  return { fill: "#ffd700", glow: "#ffaa00", core: "#ffffff" };
+      if (n.traffic_bps > 5e6)  return { fill: "#f0dda0", glow: "#c8a832", core: "#fffaf0" };
       if (n.traffic_bps > 1e5)  return { fill: "#b8d4ff", glow: "#4488ff", core: "#ffffff" };
       return                           { fill: "#ddeeff", glow: "#6699ff", core: "#ffffff" };
     }
@@ -240,7 +240,7 @@ const NetworkMap = (() => {
         const boost = Math.log10(maxTraff / 1e5) * 0.15;
         alpha = Math.min(0.85, alpha + boost);
         lw   += Math.min(3 * dpr, Math.log10(maxTraff / 1e5) * 0.8 * dpr);
-        color = maxTraff > 5e6 ? "#ffcc44" : color;
+        color = maxTraff > 5e6 ? "#e0c86a" : color;
       }
 
       // 流れるアニメーション（ダッシュオフセット）
