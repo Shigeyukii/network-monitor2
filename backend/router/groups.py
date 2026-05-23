@@ -1,21 +1,38 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
+import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_conn
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
+_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$')
+
 
 class GroupIn(BaseModel):
     name: str
     color: str = "#58a6ff"
 
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: str) -> str:
+        if not _COLOR_RE.match(v):
+            raise ValueError("color は #RGB または #RRGGBB 形式で入力してください")
+        return v
+
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _COLOR_RE.match(v):
+            raise ValueError("color は #RGB または #RRGGBB 形式で入力してください")
+        return v
 
 
 def _with_stats(group, conn):

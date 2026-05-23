@@ -908,3 +908,15 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
   font-size: 13px;
   width: 140px;
 }
+
+/* ---- Login modal ---- */
+#login-modal .modal {
+  animation: fadeInUp 0.25s ease;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#login-form button[type="submit"] {
+  margin-top: 4px;
+}

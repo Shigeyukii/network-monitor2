@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Network Monitor</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-  <script src="/static/map.js?v=2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+          integrity="sha256-s4B2di9zY7yekStouOA0gmeY213ya7YfAA7C56MTe8c="
+          crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"
+          integrity="sha256-6nqzDSbDjc8fLSa7Q+c6lFN7WPGQb1XhpUbdCTIbVhU="
+          crossorigin="anonymous"></script>
+  <script src="/static/map.js?v=3"></script>
 </head>
 <body>
 <div id="app">
@@ -339,6 +343,32 @@
           </div>
         </form>
 
+        <!-- パスワード認証（form の外） -->
+        <div class="panel" style="margin-top:20px">
+          <h3>🔐 パスワード認証</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+            パスワードを設定すると、アプリへのアクセスにログインが必要になります。<br>
+            空白のまま保存すると認証が無効化されます（初期状態）。
+          </p>
+          <div id="auth-status-msg" style="font-size:12px;margin-bottom:12px"></div>
+          <form id="password-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>新しいパスワード</label>
+                <input type="password" id="new-password" placeholder="空白で認証無効化" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label>確認</label>
+                <input type="password" id="confirm-password" placeholder="同じパスワードをもう一度" autocomplete="new-password">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button type="submit" class="btn btn-primary btn-sm">パスワードを保存</button>
+              <button type="button" class="btn btn-sm" id="btn-logout" style="display:none">ログアウト</button>
+            </div>
+          </form>
+        </div>
+
         <!-- インポート・エクスポート（form の外） -->
         <div class="panel" style="margin-top:20px">
           <h3>デバイス設定のバックアップ・復元</h3>
@@ -510,9 +540,29 @@
   <div id="trap-list"   class="alert-list" style="display:none"></div>
 </div>
 
+<!-- ============================================================
+     Login modal
+     ============================================================ -->
+<div id="login-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="max-width:360px">
+    <h2 style="text-align:center;margin-bottom:8px">🔐 ログイン</h2>
+    <p style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:20px">
+      Network Monitor へのアクセスにはパスワードが必要です。
+    </p>
+    <form id="login-form">
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" id="login-password" placeholder="パスワードを入力" autocomplete="current-password" required>
+      </div>
+      <div id="login-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%">ログイン</button>
+    </form>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div id="toast-container"></div>
 
-<script src="/static/app.js?v=2"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

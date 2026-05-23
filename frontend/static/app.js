@@ -1,24 +1,100 @@
 // ============================================================
+// Auth module
+// ============================================================
+const Auth = {
+  _token: localStorage.getItem("nm_token") || "",
+
+  headers() {
+    return this._token
+      ? { "Authorization": `Bearer ${this._token}` }
+      : {};
+  },
+
+  async init() {
+    const { auth_enabled } = await fetch("/api/auth/status").then(r => r.json()).catch(() => ({ auth_enabled: false }));
+    if (!auth_enabled) return true;
+
+    // 保存済みトークンの有効性を確認
+    if (this._token) {
+      const r = await fetch("/api/devices", { headers: this.headers() });
+      if (r.status !== 401) return true;
+      // トークン失効
+      this._token = "";
+      localStorage.removeItem("nm_token");
+    }
+    this._showLoginModal();
+    return false;
+  },
+
+  handle401() {
+    this._token = "";
+    localStorage.removeItem("nm_token");
+    this._showLoginModal();
+  },
+
+  _showLoginModal() {
+    document.getElementById("login-modal").style.display = "flex";
+    setTimeout(() => document.getElementById("login-password")?.focus(), 50);
+  },
+
+  async login(password) {
+    const r = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!r.ok) throw new Error("パスワードが違います");
+    const { token } = await r.json();
+    this._token = token;
+    localStorage.setItem("nm_token", token);
+    document.getElementById("login-modal").style.display = "none";
+    document.getElementById("login-error").style.display = "none";
+  },
+
+  async logout() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this.headers() },
+    }).catch(() => {});
+    this._token = "";
+    localStorage.removeItem("nm_token");
+    this._showLoginModal();
+  },
+};
+
+// ============================================================
 // API helpers
 // ============================================================
 const api = {
   async get(path) {
-    const r = await fetch(path);
+    const r = await fetch(path, { headers: Auth.headers() });
+    if (r.status === 401) { Auth.handle401(); throw new Error("認証が必要です"); }
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   async post(path, body) {
-    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...Auth.headers() },
+      body: JSON.stringify(body),
+    });
+    if (r.status === 401) { Auth.handle401(); throw new Error("認証が必要です"); }
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   async put(path, body) {
-    const r = await fetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...Auth.headers() },
+      body: JSON.stringify(body),
+    });
+    if (r.status === 401) { Auth.handle401(); throw new Error("認証が必要です"); }
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   async del(path) {
-    const r = await fetch(path, { method: "DELETE" });
+    const r = await fetch(path, { method: "DELETE", headers: Auth.headers() });
+    if (r.status === 401) { Auth.handle401(); throw new Error("認証が必要です"); }
     if (!r.ok && r.status !== 204) throw new Error(await r.text());
   },
 };
@@ -1027,6 +1103,7 @@ function startAlertBadgeRefresh() {
 // ============================================================
 async function openSettings() {
   showView("settings");
+  _refreshAuthStatusMsg();
   try {
     const s = await api.get("/api/settings");
     document.getElementById("setting-ping-interval").value    = s.ping_interval ?? 60;
@@ -1366,9 +1443,74 @@ document.addEventListener("DOMContentLoaded", () => {
   // Import / Export
   initImportExport();
 
+  // Login form
+  document.getElementById("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById("login-password").value;
+    try {
+      await Auth.login(pw);
+      document.getElementById("login-password").value = "";
+      showView("dashboard");
+      loadDashboard();
+      startDashboardRefresh();
+      startAlertBadgeRefresh();
+    } catch {
+      const errEl = document.getElementById("login-error");
+      errEl.textContent = "パスワードが違います";
+      errEl.style.display = "";
+    }
+  });
+
+  // Password change form (in settings)
+  document.getElementById("password-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw  = document.getElementById("new-password").value;
+    const pw2 = document.getElementById("confirm-password").value;
+    if (pw !== pw2) {
+      toast("パスワードが一致しません", "error");
+      return;
+    }
+    try {
+      const r = await fetch("/api/auth/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...Auth.headers() },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const { detail } = await r.json();
+      toast(detail);
+      document.getElementById("new-password").value = "";
+      document.getElementById("confirm-password").value = "";
+      _refreshAuthStatusMsg();
+    } catch (e) {
+      toast("保存失敗: " + e.message, "error");
+    }
+  });
+
+  document.getElementById("btn-logout").addEventListener("click", () => Auth.logout());
+
   // Initial load
-  showView("dashboard");
-  loadDashboard();
-  startDashboardRefresh();
-  startAlertBadgeRefresh();
+  Auth.init().then(ok => {
+    if (!ok) return;
+    showView("dashboard");
+    loadDashboard();
+    startDashboardRefresh();
+    startAlertBadgeRefresh();
+  });
 });
+
+function _refreshAuthStatusMsg() {
+  fetch("/api/auth/status").then(r => r.json()).then(({ auth_enabled }) => {
+    const el = document.getElementById("auth-status-msg");
+    const logoutBtn = document.getElementById("btn-logout");
+    if (auth_enabled) {
+      el.style.color = "var(--green)";
+      el.textContent = "✅ パスワード認証が有効です";
+      logoutBtn.style.display = "";
+    } else {
+      el.style.color = "var(--muted)";
+      el.textContent = "⚠ パスワード未設定（認証なし）";
+      logoutBtn.style.display = "none";
+    }
+  }).catch(() => {});
+}

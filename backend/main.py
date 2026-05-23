@@ -4,13 +4,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from database import init_db, get_settings, cleanup_old_data
 from poller import poll_ping, poll_snmp, poll_ports
 from scheduler import scheduler, reschedule
+from auth import auth_enabled, verify_password, create_token, revoke_token, check_token, set_password
 from router import devices, metrics, settings as settings_router, groups, alerts, ports, reports, importexport, networkmap, traps
 from trap_receiver import trap_receiver
 from apscheduler.triggers.interval import IntervalTrigger
@@ -83,6 +84,65 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Network Monitor", lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# 認証ミドルウェア
+# ---------------------------------------------------------------------------
+
+# 認証不要なパス（ログイン・ステータス確認・静的ファイル・フロントエンド）
+_AUTH_EXEMPT = {"/api/auth/login", "/api/auth/status"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in _AUTH_EXEMPT:
+        if auth_enabled():
+            auth_header = request.headers.get("Authorization", "")
+            token = auth_header.removeprefix("Bearer ").strip()
+            if not check_token(token):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "認証が必要です"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# 認証エンドポイント
+# ---------------------------------------------------------------------------
+
+@app.get("/api/auth/status", tags=["auth"])
+def get_auth_status():
+    return {"auth_enabled": auth_enabled()}
+
+
+@app.post("/api/auth/login", tags=["auth"])
+async def login(request: Request):
+    body = await request.json()
+    password = body.get("password", "")
+    if verify_password(password):
+        token = create_token()
+        return {"ok": True, "token": token}
+    raise HTTPException(status_code=401, detail="パスワードが違います")
+
+
+@app.post("/api/auth/logout", tags=["auth"])
+async def logout(request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    revoke_token(token)
+    return {"ok": True}
+
+
+@app.put("/api/auth/password", tags=["auth"])
+async def change_password(request: Request):
+    body = await request.json()
+    new_password = body.get("password", "")
+    set_password(new_password)
+    msg = "パスワードを設定しました" if new_password else "パスワード認証を無効化しました"
+    return {"ok": True, "detail": msg}
 
 app.include_router(groups.router)
 app.include_router(devices.router)

@@ -1,11 +1,22 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
+import ipaddress
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_conn
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+
+_SNMP_VERSIONS = {"v1", "v2c"}
+
+
+def _validate_ip(v: str) -> str:
+    try:
+        ipaddress.ip_address(v)
+    except ValueError:
+        raise ValueError(f"'{v}' は有効な IPv4/IPv6 アドレスではありません")
+    return v
 
 
 class DeviceIn(BaseModel):
@@ -18,6 +29,25 @@ class DeviceIn(BaseModel):
     ping_interval: int = 60
     group_id: Optional[int] = None
 
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: str) -> str:
+        return _validate_ip(v)
+
+    @field_validator("snmp_version")
+    @classmethod
+    def validate_snmp_version(cls, v: str) -> str:
+        if v not in _SNMP_VERSIONS:
+            raise ValueError(f"snmp_version は {_SNMP_VERSIONS} のいずれかを指定してください")
+        return v
+
+    @field_validator("ping_interval")
+    @classmethod
+    def validate_ping_interval(cls, v: int) -> int:
+        if v < 5 or v > 3600:
+            raise ValueError("ping_interval は 5〜3600 秒の範囲で指定してください")
+        return v
+
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
@@ -29,9 +59,34 @@ class DeviceUpdate(BaseModel):
     ping_interval: Optional[int] = None
     group_id: Optional[int] = None
 
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return _validate_ip(v)
+        return v
 
-def _with_status(device, conn):
+    @field_validator("snmp_version")
+    @classmethod
+    def validate_snmp_version(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _SNMP_VERSIONS:
+            raise ValueError(f"snmp_version は {_SNMP_VERSIONS} のいずれかを指定してください")
+        return v
+
+    @field_validator("ping_interval")
+    @classmethod
+    def validate_ping_interval(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 5 or v > 3600):
+            raise ValueError("ping_interval は 5〜3600 秒の範囲で指定してください")
+        return v
+
+
+def _with_status(device, conn, *, mask_community: bool = True):
     d = dict(device)
+    if mask_community:
+        # 一覧取得時は SNMP コミュニティ文字列をマスク（詳細ビューのみ平文で返す）
+        if d.get("snmp_community"):
+            d["snmp_community"] = "****"
     latest = conn.execute(
         "SELECT status, response_time, timestamp FROM ping_results "
         "WHERE device_id=? ORDER BY timestamp DESC LIMIT 1",
@@ -85,7 +140,8 @@ def get_device(device_id: int):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
-    result = _with_status(row, conn)
+    # 詳細ビューでは編集フォームのためコミュニティ文字列をそのまま返す
+    result = _with_status(row, conn, mask_community=False)
     conn.close()
     return result
 
