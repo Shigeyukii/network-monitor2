@@ -82,6 +82,7 @@ const state = {
   charts: {},
   refreshTimer: null,
   detailTimer: null,
+  mapRefreshTimer: null,
 };
 
 function showView(name) {
@@ -91,9 +92,12 @@ function showView(name) {
 
   if (name !== "dashboard") {
     NetworkMap.stopAnimation();
+    stopMapRefresh();
   } else if (state.dashTab === "map") {
     // ダッシュボードに戻るどのルートからでも確実にアニメーションを再開する
     NetworkMap.startAnimation();
+    reloadMapData();
+    startMapRefresh();
   }
 }
 
@@ -143,11 +147,13 @@ function switchDashTab(tab) {
 
     reloadMapData();
     NetworkMap.startAnimation();
+    startMapRefresh();
   } else {
     mapPane.style.display  = "none";
     listPane.style.display = "";
     view.classList.remove("map-mode");
     NetworkMap.stopAnimation();
+    stopMapRefresh();
     setMapEdgeMode(false);
   }
 }
@@ -1264,6 +1270,18 @@ function startDashboardRefresh() {
   state.refreshTimer = setInterval(() => {
     if (state.view === "dashboard") loadDashboard();
   }, 30_000);
+}
+
+function startMapRefresh() {
+  clearInterval(state.mapRefreshTimer);
+  state.mapRefreshTimer = setInterval(() => {
+    if (state.view === "dashboard" && state.dashTab === "map") reloadMapData();
+  }, 15_000);
+}
+
+function stopMapRefresh() {
+  clearInterval(state.mapRefreshTimer);
+  state.mapRefreshTimer = null;
 }
 
 // ============================================================
