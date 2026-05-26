@@ -605,6 +605,7 @@ function openAddDevice() {
   document.getElementById("modal-submit").textContent = "追加";
   document.getElementById("device-form").reset();
   document.getElementById("device-id").value = "";
+  document.getElementById("field-rtt-threshold").value = "";
   populateGroupSelect(null);
   toggleSnmpFields();
   modal.style.display = "flex";
@@ -621,10 +622,11 @@ async function openEditDevice(id) {
     document.getElementById("field-ip").value             = d.ip_address;
     document.getElementById("field-ping-interval").value  = d.ping_interval;
     populateGroupSelect(d.group_id || null);
-    document.getElementById("field-snmp-enabled").checked = !!d.snmp_enabled;
-    document.getElementById("field-community").value      = d.snmp_community;
-    document.getElementById("field-port").value           = d.snmp_port;
-    document.getElementById("field-version").value        = d.snmp_version;
+    document.getElementById("field-snmp-enabled").checked  = !!d.snmp_enabled;
+    document.getElementById("field-community").value       = d.snmp_community;
+    document.getElementById("field-port").value            = d.snmp_port;
+    document.getElementById("field-version").value         = d.snmp_version;
+    document.getElementById("field-rtt-threshold").value   = d.rtt_threshold_ms ?? "";
     toggleSnmpFields();
     modal.style.display = "flex";
   } catch (e) {
@@ -645,15 +647,17 @@ async function submitDeviceForm(e) {
   e.preventDefault();
   const id = document.getElementById("device-id").value;
   const groupVal = document.getElementById("field-group-id").value;
+  const rttVal = document.getElementById("field-rtt-threshold").value;
   const body = {
-    name:           document.getElementById("field-name").value.trim(),
-    ip_address:     document.getElementById("field-ip").value.trim(),
-    ping_interval:  parseInt(document.getElementById("field-ping-interval").value) || 60,
-    group_id:       groupVal ? parseInt(groupVal) : null,
-    snmp_enabled:   document.getElementById("field-snmp-enabled").checked,
-    snmp_community: document.getElementById("field-community").value.trim() || "public",
-    snmp_port:      parseInt(document.getElementById("field-port").value) || 161,
-    snmp_version:   document.getElementById("field-version").value,
+    name:             document.getElementById("field-name").value.trim(),
+    ip_address:       document.getElementById("field-ip").value.trim(),
+    ping_interval:    parseInt(document.getElementById("field-ping-interval").value) || 60,
+    group_id:         groupVal ? parseInt(groupVal) : null,
+    snmp_enabled:     document.getElementById("field-snmp-enabled").checked,
+    snmp_community:   document.getElementById("field-community").value.trim() || "public",
+    snmp_port:        parseInt(document.getElementById("field-port").value) || 161,
+    snmp_version:     document.getElementById("field-version").value,
+    rtt_threshold_ms: rttVal ? parseInt(rttVal) : null,
   };
   try {
     if (id) {
@@ -956,6 +960,19 @@ async function loadAlerts() {
   }
 }
 
+function _alertMeta(type) {
+  switch (type) {
+    case "down":          return { icon: "🔴", cls: "down",     text: "障害検知 (DOWN)" };
+    case "recovery":      return { icon: "🟢", cls: "recovery", text: "復旧 (UP)" };
+    case "rtt_high":      return { icon: "🟡", cls: "warn",     text: "RTT 閾値超過" };
+    case "rtt_recovered": return { icon: "🟢", cls: "recovery", text: "RTT 回復" };
+    default:
+      if (type.startsWith("bw_high"))      return { icon: "🟡", cls: "warn",     text: "帯域幅 閾値超過" };
+      if (type.startsWith("bw_recovered")) return { icon: "🟢", cls: "recovery", text: "帯域幅 回復" };
+      return { icon: "🔵", cls: "", text: type };
+  }
+}
+
 function renderAlertList(alerts) {
   const el = document.getElementById("alert-list");
   if (alerts.length === 0) {
@@ -963,16 +980,13 @@ function renderAlertList(alerts) {
     return;
   }
   el.innerHTML = alerts.map(a => {
-    const isDown     = a.type === "down";
-    const icon       = isDown ? "🔴" : "🟢";
-    const msgClass   = isDown ? "down" : "recovery";
-    const msgText    = isDown ? "障害検知 (DOWN)" : "復旧 (UP)";
-    const unreadCls  = a.acknowledged ? "" : "unread";
+    const { icon, cls, text } = _alertMeta(a.type);
+    const unreadCls = a.acknowledged ? "" : "unread";
     return `<div class="alert-item ${unreadCls}" id="alert-item-${a.id}">
       <span class="alert-icon">${icon}</span>
       <div class="alert-body">
         <div class="alert-device">${esc(a.device_name)} <span class="ip">${esc(a.device_ip_address)}</span></div>
-        <div class="alert-msg ${msgClass}">${msgText}</div>
+        <div class="alert-msg ${cls}">${text}</div>
         <div class="alert-time">${fmtTime(a.timestamp)}</div>
       </div>
       ${!a.acknowledged
@@ -1106,14 +1120,15 @@ async function openSettings() {
   _refreshAuthStatusMsg();
   try {
     const s = await api.get("/api/settings");
-    document.getElementById("setting-ping-interval").value    = s.ping_interval ?? 60;
-    document.getElementById("setting-snmp-interval").value    = s.snmp_interval ?? 60;
-    document.getElementById("setting-teams-url").value        = s.teams_webhook_url ?? "";
-    document.getElementById("setting-slack-url").value        = s.slack_webhook_url ?? "";
-    document.getElementById("setting-notify-down").checked    = s.notify_on_down !== 0;
-    document.getElementById("setting-notify-recovery").checked = s.notify_on_recovery !== 0;
-    document.getElementById("setting-trap-enabled").checked   = s.trap_enabled === 1;
-    document.getElementById("setting-trap-port").value        = s.trap_port ?? 1620;
+    document.getElementById("setting-ping-interval").value       = s.ping_interval ?? 60;
+    document.getElementById("setting-snmp-interval").value       = s.snmp_interval ?? 60;
+    document.getElementById("setting-teams-url").value           = s.teams_webhook_url ?? "";
+    document.getElementById("setting-slack-url").value           = s.slack_webhook_url ?? "";
+    document.getElementById("setting-notify-down").checked       = s.notify_on_down !== 0;
+    document.getElementById("setting-notify-recovery").checked   = s.notify_on_recovery !== 0;
+    document.getElementById("setting-trap-enabled").checked      = s.trap_enabled === 1;
+    document.getElementById("setting-trap-port").value           = s.trap_port ?? 1620;
+    document.getElementById("setting-bandwidth-threshold").value = s.bandwidth_threshold_pct ?? 80;
   } catch (e) {
     toast("設定取得失敗: " + e.message, "error");
   }
@@ -1124,14 +1139,15 @@ async function saveSettings(e) {
   const trapEnabled = document.getElementById("setting-trap-enabled").checked ? 1 : 0;
   const trapPort    = parseInt(document.getElementById("setting-trap-port").value) || 1620;
   const body = {
-    ping_interval:      parseInt(document.getElementById("setting-ping-interval").value),
-    snmp_interval:      parseInt(document.getElementById("setting-snmp-interval").value),
-    teams_webhook_url:  document.getElementById("setting-teams-url").value.trim(),
-    slack_webhook_url:  document.getElementById("setting-slack-url").value.trim(),
-    notify_on_down:     document.getElementById("setting-notify-down").checked    ? 1 : 0,
-    notify_on_recovery: document.getElementById("setting-notify-recovery").checked ? 1 : 0,
-    trap_enabled:       trapEnabled,
-    trap_port:          trapPort,
+    ping_interval:           parseInt(document.getElementById("setting-ping-interval").value),
+    snmp_interval:           parseInt(document.getElementById("setting-snmp-interval").value),
+    teams_webhook_url:       document.getElementById("setting-teams-url").value.trim(),
+    slack_webhook_url:       document.getElementById("setting-slack-url").value.trim(),
+    notify_on_down:          document.getElementById("setting-notify-down").checked    ? 1 : 0,
+    notify_on_recovery:      document.getElementById("setting-notify-recovery").checked ? 1 : 0,
+    trap_enabled:            trapEnabled,
+    trap_port:               trapPort,
+    bandwidth_threshold_pct: parseInt(document.getElementById("setting-bandwidth-threshold").value) || 80,
   };
   try {
     await api.put("/api/settings", body);

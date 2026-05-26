@@ -28,6 +28,7 @@ class DeviceIn(BaseModel):
     snmp_version: str = "v2c"
     ping_interval: int = 60
     group_id: Optional[int] = None
+    rtt_threshold_ms: Optional[int] = None
 
     @field_validator("ip_address")
     @classmethod
@@ -58,6 +59,7 @@ class DeviceUpdate(BaseModel):
     snmp_version: Optional[str] = None
     ping_interval: Optional[int] = None
     group_id: Optional[int] = None
+    rtt_threshold_ms: Optional[int] = None
 
     @field_validator("ip_address")
     @classmethod
@@ -117,11 +119,12 @@ def create_device(body: DeviceIn):
     try:
         cur = conn.execute(
             """INSERT INTO devices (name, ip_address, snmp_enabled, snmp_community,
-                                    snmp_port, snmp_version, ping_interval, group_id)
-               VALUES (?,?,?,?,?,?,?,?)""",
+                                    snmp_port, snmp_version, ping_interval, group_id,
+                                    rtt_threshold_ms)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (body.name, body.ip_address, int(body.snmp_enabled),
              body.snmp_community, body.snmp_port, body.snmp_version, body.ping_interval,
-             body.group_id),
+             body.group_id, body.rtt_threshold_ms),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM devices WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -161,9 +164,11 @@ def update_device(device_id: int, body: DeviceUpdate):
     updates = {k: v for k, v in body_dict.items() if v is not None}
     if "snmp_enabled" in body_dict and body_dict["snmp_enabled"] is not None:
         updates["snmp_enabled"] = int(body_dict["snmp_enabled"])
-    # group_id は None（未グループ）も明示的に更新できるよう別途処理
+    # group_id / rtt_threshold_ms は None（無効化）も明示的に更新できるよう別途処理
     if "group_id" in body_dict:
         updates["group_id"] = body_dict["group_id"]
+    if "rtt_threshold_ms" in body_dict:
+        updates["rtt_threshold_ms"] = body_dict["rtt_threshold_ms"]
 
     if updates:
         set_clause = ", ".join(f"{k}=?" for k in updates)
