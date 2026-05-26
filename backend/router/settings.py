@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # 数値として扱うキー（それ以外は文字列）
 _NUMERIC = {"ping_interval", "snmp_interval", "notify_on_down", "notify_on_recovery",
-            "trap_enabled", "trap_port"}
+            "trap_enabled", "trap_port", "bandwidth_threshold_pct"}
 
 
 def _cast(key: str, value: str):
@@ -42,14 +42,15 @@ def _validate_webhook_url(v: Optional[str]) -> Optional[str]:
 
 
 class SettingsIn(BaseModel):
-    ping_interval:      Optional[int] = None
-    snmp_interval:      Optional[int] = None
-    teams_webhook_url:  Optional[str] = None
-    slack_webhook_url:  Optional[str] = None
-    notify_on_down:     Optional[int] = None
-    notify_on_recovery: Optional[int] = None
-    trap_enabled:       Optional[int] = None
-    trap_port:          Optional[int] = None
+    ping_interval:           Optional[int] = None
+    snmp_interval:           Optional[int] = None
+    teams_webhook_url:       Optional[str] = None
+    slack_webhook_url:       Optional[str] = None
+    notify_on_down:          Optional[int] = None
+    notify_on_recovery:      Optional[int] = None
+    trap_enabled:            Optional[int] = None
+    trap_port:               Optional[int] = None
+    bandwidth_threshold_pct: Optional[int] = None
 
     @field_validator("teams_webhook_url", "slack_webhook_url")
     @classmethod

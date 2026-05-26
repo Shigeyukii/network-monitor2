@@ -48,11 +48,28 @@ def ping_host(ip: str, timeout: int = 2) -> tuple:
         return False, None
 
 
+def _get_last_alert_type(conn, device_id: int, alert_types: tuple) -> str | None:
+    """指定タイプ群の中で最新のアラートタイプを返す。"""
+    placeholders = ",".join("?" * len(alert_types))
+    row = conn.execute(
+        f"SELECT type FROM alerts WHERE device_id=? AND type IN ({placeholders}) "
+        "ORDER BY timestamp DESC LIMIT 1",
+        (device_id, *alert_types),
+    ).fetchone()
+    return row["type"] if row else None
+
+
 def poll_ping(device_id: int, ip: str):
     status, rtt = ping_host(ip)
     conn = get_conn()
 
-    # 状態遷移を検知してアラートを生成
+    device_row = conn.execute(
+        "SELECT name, rtt_threshold_ms FROM devices WHERE id=?", (device_id,)
+    ).fetchone()
+    device_name = device_row["name"] if device_row else str(device_id)
+    rtt_threshold = device_row["rtt_threshold_ms"] if device_row else None
+
+    # ---- 死活アラート ----
     prev = conn.execute(
         "SELECT status FROM ping_results WHERE device_id=? ORDER BY timestamp DESC LIMIT 1",
         (device_id,),
@@ -70,13 +87,23 @@ def poll_ping(device_id: int, ip: str):
             "INSERT INTO alerts (device_id, type) VALUES (?, ?)",
             (device_id, alert_type),
         )
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        device_row = conn.execute(
-            "SELECT name FROM devices WHERE id=?", (device_id,)
-        ).fetchone()
-        device_name = device_row["name"] if device_row else str(device_id)
-        logger.warning("ALERT %s: %s (%s)", alert_type.upper(), device_name, ip)
+
+    # ---- RTT 閾値アラート（UP かつ RTT 取得済みのときのみ） ----
+    rtt_alert_type = None
+    if status and rtt is not None and rtt_threshold is not None:
+        last_rtt = _get_last_alert_type(conn, device_id, ("rtt_high", "rtt_recovered"))
+        if rtt > rtt_threshold and last_rtt != "rtt_high":
+            rtt_alert_type = "rtt_high"
+        elif rtt <= rtt_threshold and last_rtt == "rtt_high":
+            rtt_alert_type = "rtt_recovered"
+
+        if rtt_alert_type:
+            conn.execute(
+                "INSERT INTO alerts (device_id, type) VALUES (?, ?)",
+                (device_id, rtt_alert_type),
+            )
+            logger.warning("ALERT %s: %s (%s) RTT=%.1fms threshold=%dms",
+                           rtt_alert_type.upper(), device_name, ip, rtt, rtt_threshold)
 
     conn.execute(
         "INSERT INTO ping_results (device_id, status, response_time) VALUES (?, ?, ?)",
@@ -87,12 +114,24 @@ def poll_ping(device_id: int, ip: str):
     logger.info("ping %s → %s  %s", ip, "UP" if status else "DOWN",
                 f"{rtt:.1f}ms" if rtt is not None else "timeout")
 
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    settings = get_settings()
+
     if alert_type:
+        logger.warning("ALERT %s: %s (%s)", alert_type.upper(), device_name, ip)
         try:
             from notifier import notify
-            notify(device_name, ip, alert_type, timestamp, get_settings())
+            notify(device_name, ip, alert_type, timestamp, settings)
         except Exception as e:
             logger.error("notify error: %s", e)
+
+    if rtt_alert_type:
+        try:
+            from notifier import notify_threshold
+            notify_threshold(device_name, ip, "rtt", rtt_alert_type,
+                             rtt, rtt_threshold, timestamp, settings)
+        except Exception as e:
+            logger.error("notify threshold error: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +312,71 @@ def poll_snmp(device_id: int, ip: str, community: str, port: int, version: str):
         )
 
     conn.commit()
+
+    # ---- 帯域幅閾値アラート ----
+    bw_threshold_pct = None
+    try:
+        from database import get_settings as _gs
+        val = _gs().get("bandwidth_threshold_pct", "")
+        bw_threshold_pct = int(val) if val else None
+    except Exception:
+        pass
+
+    if bw_threshold_pct is not None:
+        device_row = conn.execute("SELECT name FROM devices WHERE id=?", (device_id,)).fetchone()
+        device_name = device_row["name"] if device_row else str(device_id)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        for idx, ctr in counters.items():
+            iface = conn.execute(
+                "SELECT if_name, if_speed FROM snmp_interfaces WHERE device_id=? AND if_index=?",
+                (device_id, idx),
+            ).fetchone()
+            if not iface or not iface["if_speed"]:
+                continue
+            speed_bps = iface["if_speed"]
+            # 直近 bps を再取得
+            latest = conn.execute(
+                "SELECT in_bps, out_bps FROM snmp_traffic "
+                "WHERE device_id=? AND if_index=? AND in_bps IS NOT NULL "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (device_id, idx),
+            ).fetchone()
+            if not latest:
+                continue
+            max_bps = max(latest["in_bps"] or 0, latest["out_bps"] or 0)
+            usage_pct = (max_bps / speed_bps) * 100 if speed_bps > 0 else 0
+
+            last_bw = _get_last_alert_type(
+                conn, device_id,
+                (f"bw_high_{idx}", f"bw_recovered_{idx}"),
+            )
+            bw_alert = None
+            if usage_pct > bw_threshold_pct and last_bw != f"bw_high_{idx}":
+                bw_alert = f"bw_high_{idx}"
+            elif usage_pct <= bw_threshold_pct and last_bw == f"bw_high_{idx}":
+                bw_alert = f"bw_recovered_{idx}"
+
+            if bw_alert:
+                conn.execute(
+                    "INSERT INTO alerts (device_id, type) VALUES (?, ?)",
+                    (device_id, bw_alert),
+                )
+                alert_kind = "bw_high" if bw_alert.startswith("bw_high") else "bw_recovered"
+                if_name = iface["if_name"] or f"if{idx}"
+                logger.warning("ALERT %s: %s (%s) if=%s usage=%.1f%% threshold=%d%%",
+                               bw_alert.upper(), device_name, ip,
+                               if_name, usage_pct, bw_threshold_pct)
+                try:
+                    from notifier import notify_threshold
+                    notify_threshold(device_name, ip, "bandwidth", alert_kind,
+                                     usage_pct, bw_threshold_pct, timestamp,
+                                     get_settings(), if_name=if_name)
+                except Exception as e:
+                    logger.error("notify threshold error: %s", e)
+
+        conn.commit()
+
     conn.close()
     logger.info("snmp %s → %d interfaces", ip, len(counters))
 

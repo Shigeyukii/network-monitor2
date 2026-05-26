@@ -265,6 +265,18 @@
           </div>
 
           <div class="panel" style="margin-bottom:20px">
+            <h3>🟡 閾値アラート</h3>
+            <div class="form-group">
+              <label>帯域幅使用率 閾値（%）</label>
+              <input type="number" id="setting-bandwidth-threshold" min="1" max="100" value="80" style="width:120px">
+              <div class="hint">
+                SNMP インターフェースの送受信速度がリンク速度の指定% を超えると警告アラートを発行します。<br>
+                デフォルト: 80%。RTT 閾値は各デバイスの編集画面で個別に設定してください。
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-bottom:20px">
             <h3>通知設定</h3>
 
             <div class="form-group">
@@ -444,6 +456,12 @@
         <label>Ping 間隔（秒）</label>
         <input type="number" id="field-ping-interval" value="60" min="10" max="3600">
         <div class="hint">デバイス個別に設定できます（グローバル設定を上書き）</div>
+      </div>
+
+      <div class="form-group">
+        <label>RTT 閾値（ms）<span style="font-weight:normal;color:var(--muted)"> — 任意</span></label>
+        <input type="number" id="field-rtt-threshold" placeholder="例: 100（空白で無効）" min="1" max="10000">
+        <div class="hint">応答時間がこの値を超えると 🟡 警告アラートを発行します。</div>
       </div>
 
       <div class="form-group">

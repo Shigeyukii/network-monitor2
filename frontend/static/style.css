@@ -570,6 +570,7 @@ main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
 .alert-time { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .alert-msg.down     { color: var(--red); }
 .alert-msg.recovery { color: var(--green); }
+.alert-msg.warn     { color: #d4a017; }
 
 .alert-ack-btn {
   background: transparent;

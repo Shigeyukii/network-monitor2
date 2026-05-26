@@ -145,14 +145,15 @@ def init_db():
             value TEXT NOT NULL
         );
 
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('ping_interval',      '60');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_interval',      '60');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('teams_webhook_url',  '');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('slack_webhook_url',  '');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_down',     '1');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_recovery', '1');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_enabled',       '0');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_port',          '1620');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('ping_interval',          '60');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_interval',          '60');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('teams_webhook_url',      '');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('slack_webhook_url',      '');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_down',         '1');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_recovery',     '1');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_enabled',           '0');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('trap_port',              '1620');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('bandwidth_threshold_pct', '80');
     """)
     conn.commit()
 
@@ -162,6 +163,10 @@ def init_db():
         conn.execute("ALTER TABLE devices ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL")
     if "maintenance" not in existing_cols:
         conn.execute("ALTER TABLE devices ADD COLUMN maintenance INTEGER NOT NULL DEFAULT 0")
+    if "rtt_threshold_ms" not in existing_cols:
+        conn.execute("ALTER TABLE devices ADD COLUMN rtt_threshold_ms INTEGER DEFAULT NULL")
+    # Migration: add default settings if not present
+    conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('bandwidth_threshold_pct', '80')")
     conn.commit()
 
     conn.close()
